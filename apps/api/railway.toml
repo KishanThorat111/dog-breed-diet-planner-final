@@ -1,0 +1,16 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --loop uvloop --http httptools --log-level warning --access-log --proxy-headers --forwarded-allow-ips \"*\""
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[deploy.releaseCommand]
+# Runs BEFORE the new deploy goes live — safe migration window.
+# Alembic reads DATABASE_URL from env; ensure it points to port 5432 (direct, not pooler)
+# for DDL compatibility. Set ALEMBIC_DATABASE_URL in Railway if they differ.
+command = "python -m alembic upgrade head"
