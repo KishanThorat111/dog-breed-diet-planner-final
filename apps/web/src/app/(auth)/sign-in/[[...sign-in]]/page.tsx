@@ -7,7 +7,7 @@ export default function SignInPage() {
   const router = useRouter();
   
   useEffect(() => {
-    router.push('/dashboard/analyze');
+    router.push('/analyze');
   }, [router]);
 
   return null;

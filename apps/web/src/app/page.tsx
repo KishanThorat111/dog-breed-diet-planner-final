@@ -15,16 +15,16 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              href="/sign-in"
+              href="/analyze"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              Sign in
+              Try it
             </Link>
             <Link
-              href="/sign-up"
+              href="/analyze"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
             >
-              Get started free
+              Get started
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -50,17 +50,11 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              href="/sign-up"
+              href="/analyze"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 hover:shadow-xl sm:w-auto"
             >
-              Start free — no credit card
+              Try it now — no signup
               <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/sign-in"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-background px-8 py-3.5 text-base font-medium text-foreground transition-all hover:bg-muted sm:w-auto"
-            >
-              Sign in
             </Link>
           </div>
         </div>
