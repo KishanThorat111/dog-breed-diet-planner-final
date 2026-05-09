@@ -289,7 +289,7 @@ class DietEngine:
         # 7. Food recommendations
         food_recs = self._build_food_recommendations(
             daily_calories, protein_g, fat_g, carbs_g,
-            allergies, overlay, health_conditions
+            allergies, overlay, health_conditions, weight_kg
         )
 
         # 8. Foods to avoid
@@ -365,6 +365,7 @@ class DietEngine:
         allergies: list[str],
         overlay: BreedOverlay,
         health_conditions: list[str],
+        weight_kg: float = 10.0,
     ) -> list[dict]:
         """Build proportional food list, excluding allergens."""
         excluded_foods: set[str] = set()
