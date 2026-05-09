@@ -156,53 +156,82 @@ async def classify_breed_with_gemini(
 ) -> dict[str, Any] | None:
     """
     Send image to Gemini Vision and return structured breed classification.
-    Returns None if Gemini is not configured or the call fails (caller falls
-    back to local EfficientNet model).
+    Uses the Gemini REST v1 API directly (no SDK — avoids gRPC v1beta routing
+    issues in google-generativeai 0.8.x).
+    Returns None if Gemini is not configured or the call fails.
     """
+    import base64
+    import io as _io
+    import json as _json
     import traceback
+    import urllib.error
+    import urllib.request
     from app.config import settings
 
     if not settings.gemini_api_key:
-        logger.warning("GEMINI_API_KEY is empty — Gemini Vision disabled. "
-                       "Set GEMINI_API_KEY in Railway Variables to enable accurate breed detection.")
+        logger.warning(
+            "GEMINI_API_KEY is empty — Gemini Vision disabled. "
+            "Set it in Railway Variables for accurate breed detection."
+        )
         return None
 
-    # Pre-process image to JPEG — Gemini handles JPEG most reliably across SDK versions
+    # Pre-process image to JPEG
     jpeg_bytes = _jpeg_encode(image_bytes)
-    logger.info("Gemini Vision: sending %d KB JPEG image", len(jpeg_bytes) // 1024)
+    logger.info("Gemini Vision: sending %d KB JPEG via REST v1 API", len(jpeg_bytes) // 1024)
+
+    # Build REST API request (stable v1, not v1beta used by old SDK)
+    b64_image = base64.b64encode(jpeg_bytes).decode("utf-8")
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": _CLASSIFY_PROMPT},
+                    {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}},
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.02,
+            "maxOutputTokens": 600,
+        },
+    }
+
+    api_url = (
+        "https://generativelanguage.googleapis.com/v1/models/"
+        f"gemini-1.5-flash:generateContent?key={settings.gemini_api_key}"
+    )
 
     raw_text: str = ""
-
-    # ── Attempt 1: google-generativeai SDK (GenerativeModel style) ────────
     try:
-        import google.generativeai as genai  # type: ignore[import]
-        genai.configure(api_key=settings.gemini_api_key)
-
-        # SDK 0.8.x uses v1beta internally; use "models/" prefix to ensure
-        # the correct endpoint is hit regardless of SDK version.
-        # "gemini-1.5-flash-latest" is the stable alias for the latest flash model.
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
-
-        # NOTE: Do NOT pass response_mime_type here — it breaks in many SDK
-        # versions when combined with image content. We parse JSON ourselves.
-        generation_config = genai.types.GenerationConfig(
-            temperature=0.02,
-            max_output_tokens=600,
+        req_body = _json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url=api_url,
+            data=req_body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
         )
+        loop = __import__("asyncio").get_running_loop()
+        # Run the blocking HTTP call in a thread so we don't block the event loop
+        def _http_call() -> str:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode("utf-8")
 
-        image_part = {"mime_type": "image/jpeg", "data": jpeg_bytes}
-        response = model.generate_content(
-            contents=[_CLASSIFY_PROMPT, image_part],
-            generation_config=generation_config,
+        resp_text = await loop.run_in_executor(None, _http_call)
+        resp_data = _json.loads(resp_text)
+        raw_text = (
+            resp_data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
         )
-        raw_text = response.text or ""
-        logger.info("Gemini Vision raw response (%d chars): %s", len(raw_text), raw_text[:200])
+        logger.info("Gemini REST v1 response (%d chars): %s", len(raw_text), raw_text[:200])
 
+    except urllib.error.HTTPError as http_err:
+        err_body = http_err.read().decode("utf-8", errors="replace")
+        logger.error("Gemini REST API HTTP %d: %s", http_err.code, err_body[:500])
+        return None
     except Exception as exc:
-        logger.error(
-            "Gemini vision call failed (attempt 1): %s\n%s",
-            exc, traceback.format_exc()
-        )
+        logger.error("Gemini REST call failed: %s\n%s", exc, traceback.format_exc())
         return None
 
     data = _parse_response(raw_text)

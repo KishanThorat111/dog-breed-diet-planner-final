@@ -133,16 +133,21 @@ async def list_predictions(
 async def gemini_status() -> dict:
     """
     Quick diagnostic: checks whether Gemini Vision is configured and reachable.
-    Sends a 1x1 white JPEG to Gemini and reports the result.
+    Calls the Gemini REST v1 API directly (bypasses SDK gRPC/v1beta issues).
     """
+    import base64
     import io
+    import json as _json
     import traceback
+    import urllib.error
+    import urllib.request
     from app.config import settings
+    from PIL import Image as _Img
 
     result: dict = {
         "gemini_api_key_set": bool(settings.gemini_api_key),
         "gemini_api_key_prefix": settings.gemini_api_key[:8] + "..." if settings.gemini_api_key else "",
-        "sdk_available": False,
+        "api_method": "REST v1",
         "call_success": False,
         "error": None,
         "raw_response": None,
@@ -151,31 +156,42 @@ async def gemini_status() -> dict:
     if not settings.gemini_api_key:
         return result
 
-    try:
-        import google.generativeai as genai  # type: ignore[import]
-        result["sdk_available"] = True
-        result["sdk_version"] = getattr(genai, "__version__", "unknown")
-    except ImportError as e:
-        result["error"] = f"SDK import failed: {e}"
-        return result
-
-    # Create a tiny white 1x1 JPEG
-    from PIL import Image as _Img
+    # Create a tiny 10x10 white JPEG
     buf = io.BytesIO()
     _Img.new("RGB", (10, 10), (255, 255, 255)).save(buf, format="JPEG")
     tiny_jpeg = buf.getvalue()
+    b64_img = base64.b64encode(tiny_jpeg).decode("utf-8")
+
+    payload = {
+        "contents": [{"parts": [
+            {"text": "Is there a dog in this image? Reply yes or no."},
+            {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
+        ]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 20},
+    }
+    api_url = (
+        "https://generativelanguage.googleapis.com/v1/models/"
+        f"gemini-1.5-flash:generateContent?key={settings.gemini_api_key}"
+    )
 
     try:
-        genai.configure(api_key=settings.gemini_api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
-        generation_config = genai.types.GenerationConfig(temperature=0.1, max_output_tokens=100)
-        response = model.generate_content(
-            contents=["Is there a dog in this image? Reply with just yes or no.",
-                      {"mime_type": "image/jpeg", "data": tiny_jpeg}],
-            generation_config=generation_config,
+        req = urllib.request.Request(
+            url=api_url,
+            data=_json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json"},
         )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            resp_data = _json.loads(r.read().decode())
         result["call_success"] = True
-        result["raw_response"] = (response.text or "")[:200]
+        result["raw_response"] = (
+            resp_data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+        )[:200]
+    except urllib.error.HTTPError as http_err:
+        result["error"] = f"HTTP {http_err.code}: {http_err.read().decode()[:300]}"
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         result["traceback"] = traceback.format_exc()
