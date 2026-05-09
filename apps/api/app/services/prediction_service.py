@@ -69,7 +69,7 @@ class PredictionService:
                 top_confidence=ai_vision["top_confidence"],
                 top_display_name=ai_vision["top_display_name"],
                 all_predictions=ai_vision["all_predictions"],
-                model_version=f"gemini-vision-1.5-flash",
+                model_version=f"gemini-vision-1.5-flash-latest",
                 inference_time_ms=0,
                 image_hash=image_hash,
             )

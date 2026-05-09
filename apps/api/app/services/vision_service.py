@@ -178,7 +178,10 @@ async def classify_breed_with_gemini(
         import google.generativeai as genai  # type: ignore[import]
         genai.configure(api_key=settings.gemini_api_key)
 
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # SDK 0.8.x uses v1beta internally; use "models/" prefix to ensure
+        # the correct endpoint is hit regardless of SDK version.
+        # "gemini-1.5-flash-latest" is the stable alias for the latest flash model.
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
         # NOTE: Do NOT pass response_mime_type here — it breaks in many SDK
         # versions when combined with image content. We parse JSON ourselves.

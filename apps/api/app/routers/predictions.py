@@ -167,7 +167,7 @@ async def gemini_status() -> dict:
 
     try:
         genai.configure(api_key=settings.gemini_api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
         generation_config = genai.types.GenerationConfig(temperature=0.1, max_output_tokens=100)
         response = model.generate_content(
             contents=["Is there a dog in this image? Reply with just yes or no.",
