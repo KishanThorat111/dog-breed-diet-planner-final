@@ -147,7 +147,7 @@ async def gemini_status() -> dict:
     result: dict = {
         "gemini_api_key_set": bool(settings.gemini_api_key),
         "gemini_api_key_prefix": settings.gemini_api_key[:8] + "..." if settings.gemini_api_key else "",
-        "api_method": "REST v1",
+        "api_method": "REST v1beta (gemini-2.0-flash)",
         "call_success": False,
         "error": None,
         "raw_response": None,
@@ -170,8 +170,8 @@ async def gemini_status() -> dict:
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 20},
     }
     api_url = (
-        "https://generativelanguage.googleapis.com/v1/models/"
-        f"gemini-1.5-flash:generateContent?key={settings.gemini_api_key}"
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
     )
 
     try:

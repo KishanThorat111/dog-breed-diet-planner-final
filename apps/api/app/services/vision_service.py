@@ -177,7 +177,7 @@ async def classify_breed_with_gemini(
 
     # Pre-process image to JPEG
     jpeg_bytes = _jpeg_encode(image_bytes)
-    logger.info("Gemini Vision: sending %d KB JPEG via REST v1 API", len(jpeg_bytes) // 1024)
+    logger.info("Gemini Vision: sending %d KB JPEG via REST v1beta API (gemini-2.0-flash)", len(jpeg_bytes) // 1024)
 
     # Build REST API request (stable v1, not v1beta used by old SDK)
     b64_image = base64.b64encode(jpeg_bytes).decode("utf-8")
@@ -197,8 +197,8 @@ async def classify_breed_with_gemini(
     }
 
     api_url = (
-        "https://generativelanguage.googleapis.com/v1/models/"
-        f"gemini-1.5-flash:generateContent?key={settings.gemini_api_key}"
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
     )
 
     raw_text: str = ""
