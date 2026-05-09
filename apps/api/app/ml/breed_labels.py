@@ -1,22 +1,4 @@
 """
-Stanford Dogs Dataset — 120 breed labels.
-Each entry: (model_class_index, snake_case_key, display_name, size_category)
-size_category: toy | small | medium | large | giant
-"""
-from __future__ import annotations
-
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class BreedInfo:
-    index: int
-    key: str
-    display_name: str
-    size: str  # toy | small | medium | large | giant
-
-
-"""
 Dog breed label taxonomy.
 
 Originally based on Stanford Dogs Dataset (120 breeds), now extended with:
@@ -25,8 +7,8 @@ Originally based on Stanford Dogs Dataset (120 breeds), now extended with:
   - Additional globally popular breeds
 
 The local EfficientNet model still outputs 120 classes (indices 0-119).
-Indices 120+ are Gemini-only — the vision LLM identifies them by name and
-they are mapped by key, not by index.
+Indices with index=-1 are Gemini-only — the vision LLM identifies them by
+name and they are mapped by key, not by index.
 """
 from __future__ import annotations
 
