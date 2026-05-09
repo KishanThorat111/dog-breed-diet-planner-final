@@ -59,8 +59,15 @@ class PredictionService:
         # 4. Try Gemini Vision first (highest accuracy).
         #    Falls back to local EfficientNet model if Gemini is unavailable.
         from app.services.vision_service import classify_breed_with_gemini
+        from fastapi import HTTPException
 
         ai_vision = await classify_breed_with_gemini(image_bytes, content_type)
+
+        if ai_vision is not None and ai_vision.get("no_dog_detected"):
+            raise HTTPException(
+                status_code=422,
+                detail="No dog detected in this image. Please upload a clear photo of a dog.",
+            )
 
         if ai_vision is not None:
             # Build a synthetic InferencePipelineResult from Gemini's response
@@ -69,7 +76,7 @@ class PredictionService:
                 top_confidence=ai_vision["top_confidence"],
                 top_display_name=ai_vision["top_display_name"],
                 all_predictions=ai_vision["all_predictions"],
-                model_version=f"gemini-vision-1.5-flash-latest",
+                model_version=f"gemini-vision-2.5-flash",
                 inference_time_ms=0,
                 image_hash=image_hash,
             )

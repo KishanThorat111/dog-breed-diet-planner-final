@@ -14,18 +14,28 @@ interface PredictionResultProps {
 
 export function PredictionResult({ prediction }: PredictionResultProps) {
   const { pets } = usePets();
-  const { mutate: generatePlan, isPending } = useGenerateDietPlan();
+  const { mutate: generatePlan, isPending, data: dietPlan } = useGenerateDietPlan();
   const [selectedPetId, setSelectedPetId] = useState<string>("");
   const router = useRouter();
 
   const topBreed = prediction.all_predictions[0];
+  const breedKey = prediction.top_breed;
+  const breedDisplay = topBreed?.display_name ?? capitalize(prediction.top_breed);
+  const hasPets = pets && pets.length > 0;
 
   const handleGeneratePlan = () => {
-    if (!selectedPetId) return;
-    generatePlan(
-      { pet_id: selectedPetId, prediction_id: prediction.id },
-      { onSuccess: () => router.push("/diet-plans") }
-    );
+    if (hasPets && selectedPetId) {
+      generatePlan(
+        { pet_id: selectedPetId, prediction_id: prediction.id },
+        { onSuccess: () => router.push("/diet-plans") }
+      );
+    } else {
+      // Anonymous quick-generate: use breed from prediction directly
+      generatePlan(
+        { breed: breedKey, prediction_id: prediction.id },
+        { onSuccess: () => router.push("/diet-plans") }
+      );
+    }
   };
 
   return (
@@ -43,9 +53,7 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
       {/* Top prediction */}
       <div className="mb-4 rounded-xl bg-primary/5 p-4">
         <p className="text-sm text-muted-foreground">Top match</p>
-        <p className="mt-1 text-xl font-bold text-foreground">
-          {topBreed?.display_name ?? capitalize(prediction.top_breed)}
-        </p>
+        <p className="mt-1 text-xl font-bold text-foreground">{breedDisplay}</p>
         <div className="mt-2 flex items-center gap-3">
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
             <div
@@ -64,7 +72,7 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
         )}
       </div>
 
-      {/* Top 5 predictions */}
+      {/* Other predictions */}
       {prediction.all_predictions.length > 1 && (
         <div className="mb-4 space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -89,41 +97,45 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
         </div>
       )}
 
-      {/* Generate diet plan */}
-      {pets && pets.length > 0 && (
-        <div className="border-t border-border pt-4">
-          <p className="mb-2 text-sm font-medium text-foreground">Generate diet plan for:</p>
-          <div className="flex gap-2">
+      {/* Generate diet plan — always visible */}
+      <div className="border-t border-border pt-4">
+        <p className="mb-2 text-sm font-medium text-foreground">
+          Generate a diet plan for this {breedDisplay}
+        </p>
+
+        {hasPets && (
+          <div className="mb-2">
             <select
               value={selectedPetId}
               onChange={(e) => setSelectedPetId(e.target.value)}
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <option value="">Select a pet…</option>
+              <option value="">Quick generate (no pet) or select a pet…</option>
               {pets.map((pet) => (
                 <option key={pet.id} value={pet.id}>
                   {pet.name}
                 </option>
               ))}
             </select>
-            <button
-              onClick={handleGeneratePlan}
-              disabled={!selectedPetId || isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Generate
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </>
-              )}
-            </button>
           </div>
-        </div>
-      )}
+        )}
+
+        <button
+          onClick={handleGeneratePlan}
+          disabled={isPending}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <Sparkles className="h-4 w-4" />
+              Generate Diet Plan
+              <ChevronRight className="h-3.5 w-3.5" />
+            </>
+          )}
+        </button>
+      </div>
 
       <p className="mt-3 text-xs text-muted-foreground">
         Model: {prediction.model_version} · {prediction.inference_time_ms}ms

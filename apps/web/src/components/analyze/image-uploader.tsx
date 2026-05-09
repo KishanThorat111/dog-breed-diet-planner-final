@@ -116,7 +116,22 @@ export function ImageUploader() {
         setIsCompressing(false);
       }
 
-      analyze({ file: fileToUpload }, { onSuccess: (data) => setResult(data) });
+      analyze(
+        { file: fileToUpload },
+        {
+          onSuccess: (data) => setResult(data),
+          onError: (err: Error) => {
+            // Show clear error for non-dog images; generic for other failures
+            const msg = err.message || "";
+            if (msg.toLowerCase().includes("no dog")) {
+              toast.error("No dog detected. Please upload a clear photo of a dog.", { duration: 5000 });
+            } else {
+              toast.error(msg || "Analysis failed. Please try again.");
+            }
+            setPreview(null);
+          },
+        }
+      );
     },
     [analyze]
   );

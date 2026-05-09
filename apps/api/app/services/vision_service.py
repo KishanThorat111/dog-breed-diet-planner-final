@@ -267,7 +267,9 @@ async def classify_breed_with_gemini(
 
     if not data.get("is_dog", True):
         logger.info("Gemini: image does not appear to contain a dog.")
-        return None
+        # Return special sentinel dict so caller knows Gemini explicitly
+        # rejected this image — do NOT fall back to EfficientNet.
+        return {"no_dog_detected": True}
 
     top_key = data.get("top_breed_key", "")
     top_display = data.get("top_display_name", "")

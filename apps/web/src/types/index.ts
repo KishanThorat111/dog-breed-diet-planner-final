@@ -117,6 +117,10 @@ export interface DietPlan {
 }
 
 export interface GenerateDietPlanRequest {
-  pet_id: string;
+  pet_id?: string;
   prediction_id?: string;
+  breed?: string;
+  age_months?: number;
+  weight_kg?: number;
+  activity_level?: string;
 }
