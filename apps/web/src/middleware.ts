@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Routes that require authentication (client-side check via AuthGuard)
-// Middleware here only prevents caching of protected pages — actual auth
+// Middleware here only prevents caching of protected pages Â— actual auth
 // is enforced by the AuthGuard component in the dashboard layout.
 const PROTECTED_PATHS = ["/dashboard", "/pets", "/analyze", "/diet-plans", "/reports", "/admin"];
 

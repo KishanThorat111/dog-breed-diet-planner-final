@@ -42,7 +42,7 @@ export default function SignUpPage() {
           </div>
           <h1 className="text-2xl font-bold text-foreground">Create your account</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Start for free — no credit card required
+            Start for free Â— no credit card required
           </p>
         </div>
 
@@ -102,7 +102,7 @@ export default function SignUpPage() {
             disabled={loading}
             className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            {loading ? "Creating account…" : "Create account"}
+            {loading ? "Creating accountÂ…" : "Create account"}
           </button>
 
           <p className="text-center text-sm text-muted-foreground">

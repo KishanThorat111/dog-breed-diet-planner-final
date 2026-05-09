@@ -71,14 +71,23 @@ export default function AdminAIPage() {
 
   // ── queries ──────────────────────────────────────────────────────────────
 
+  interface TestResult {
+    provider: string;
+    model: string;
+    latency_ms: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    response_preview: string;
+  }
+
   const configQuery = useQuery<AIConfig>({
     queryKey: ["admin", "ai", "config"],
-    queryFn: () => api.get("/api/v1/admin/ai/config").then((r) => r.data),
+    queryFn: () => api.get<AIConfig>("/api/v1/admin/ai/config").then((r) => r.data),
   });
 
   const healthQuery = useQuery<{ results: HealthResult[] }>({
     queryKey: ["admin", "ai", "health"],
-    queryFn: () => api.get("/api/v1/admin/ai/health").then((r) => r.data),
+    queryFn: () => api.get<{ results: HealthResult[] }>("/api/v1/admin/ai/health").then((r) => r.data),
     staleTime: 30_000,
   });
 
@@ -86,7 +95,7 @@ export default function AdminAIPage() {
 
   const updateMutation = useMutation({
     mutationFn: (updates: Partial<AIConfig>) =>
-      api.put("/api/v1/admin/ai/config", updates).then((r) => r.data),
+      api.put<AIConfig>("/api/v1/admin/ai/config", updates).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "ai", "config"] });
       toast.success("AI configuration updated");
@@ -94,9 +103,9 @@ export default function AdminAIPage() {
     onError: (e: Error) => toast.error(`Update failed: ${e.message}`),
   });
 
-  const testMutation = useMutation({
-    mutationFn: (body: { provider: string; prompt: string }) =>
-      api.post("/api/v1/admin/ai/test", body).then((r) => r.data),
+  const testMutation = useMutation<TestResult, Error, { provider: string; prompt: string }>({
+    mutationFn: (body) =>
+      api.post<TestResult>("/api/v1/admin/ai/test", body).then((r) => r.data),
     onSuccess: (data) => {
       setTestResult(
         `✓ ${data.provider} / ${data.model} — ${data.latency_ms}ms\n` +
