@@ -47,21 +47,27 @@ logger = logging.getLogger(__name__)
 # --- Lifespan ---
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    logger.info("Starting up…")
+    import asyncio
+    logger.info("Starting up...")
 
-    # Load ML model
-    from app.ml.model_loader import initialize_model
-    try:
-        initialize_model()
-        logger.info("ML model ready.")
-    except Exception as exc:
-        logger.error("ML model failed to load: %s", exc)
-        # Continue — predictions will return 503 if model absent
+    # Load ML model in a background thread so the server starts accepting
+    # requests immediately. /health responds while the model downloads.
+    # Prediction endpoints return 503 until the model is ready.
+    async def _load_model_background() -> None:
+        from app.ml.model_loader import initialize_model
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(None, initialize_model)
+            logger.info("ML model ready.")
+        except Exception as exc:
+            logger.error("ML model failed to load: %s", exc)
+
+    asyncio.create_task(_load_model_background())
 
     yield
 
     # Shutdown
-    logger.info("Shutting down…")
+    logger.info("Shutting down...")
     from app.services.prediction_service import _inference_executor
     _inference_executor.shutdown(wait=False)
     logger.info("Shutdown complete.")
@@ -144,7 +150,7 @@ async def health_check() -> dict:
 
 @app.get("/ready", tags=["health"])
 async def readiness_check() -> dict:
-    """Readiness probe — fails if DB is unavailable."""
+    """Readiness probe ï¿½ fails if DB is unavailable."""
     from app.database import engine
     from sqlalchemy import text
 
