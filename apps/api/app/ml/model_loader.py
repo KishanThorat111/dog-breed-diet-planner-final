@@ -6,13 +6,16 @@ from __future__ import annotations
 
 import logging
 from threading import Lock
+from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.ml.breed_classifier import BreedClassifier
+
+if TYPE_CHECKING:
+    from app.ml.breed_classifier import BreedClassifier
 
 logger = logging.getLogger(__name__)
 
-_classifier: BreedClassifier | None = None
+_classifier: "BreedClassifier | None" = None
 _load_status: str = "unloaded"  # "unloaded" | "loaded" | "failed"
 _load_lock = Lock()
 
@@ -21,7 +24,7 @@ def get_classifier_status() -> str:
     return _load_status
 
 
-def get_classifier() -> BreedClassifier:
+def get_classifier() -> "BreedClassifier":
     """FastAPI dependency / direct accessor for the loaded classifier."""
     global _classifier, _load_status
 
@@ -35,6 +38,7 @@ def get_classifier() -> BreedClassifier:
             return _classifier
 
         if _classifier is None:
+            from app.ml.breed_classifier import BreedClassifier
             _classifier = BreedClassifier(
                 model_path=settings.ml_model_path or None,
                 device="cpu",
@@ -55,7 +59,7 @@ def get_classifier() -> BreedClassifier:
             )
 
 
-def initialize_model() -> BreedClassifier:
+def initialize_model() -> "BreedClassifier":
     """
     Called once at application startup (in lifespan).
     Creates and loads the EfficientNet-B4 classifier.

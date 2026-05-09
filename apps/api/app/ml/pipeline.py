@@ -7,9 +7,12 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from app.ml.breed_classifier import BreedClassifier, BreedPredictionResult
 from app.ml.model_loader import get_classifier
+
+if TYPE_CHECKING:
+    from app.ml.breed_classifier import BreedClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ def run_inference(image_bytes: bytes) -> InferencePipelineResult:
     Execute the full inference pipeline on raw image bytes.
     This is synchronous and CPU-bound. Call from a thread pool in async contexts.
     """
-    classifier: BreedClassifier = get_classifier()
+    classifier: "BreedClassifier" = get_classifier()
 
     image_hash = hashlib.sha256(image_bytes).hexdigest()
     predictions, inference_ms = classifier.predict(image_bytes, top_k=5)
