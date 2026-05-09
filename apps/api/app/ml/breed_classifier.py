@@ -12,6 +12,11 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
+# Limit PyTorch to 1 inter-op + 1 intra-op thread on Railway's single-core
+# container. Each extra thread adds ~50MB of per-thread buffer allocations.
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
+
 from app.ml.breed_labels import INDEX_TO_BREED, NUM_CLASSES, BreedInfo
 from app.ml.preprocessor import preprocess_image
 
@@ -69,6 +74,9 @@ class BreedClassifier:
         model.to(self.device)
         self._model = model
         self._loaded = True
+        # Release any temporary allocations made during weight loading
+        import gc
+        gc.collect()
         logger.info("Model loaded successfully.")
 
     def predict(self, image_bytes: bytes, top_k: int = 5) -> tuple[list[BreedPredictionResult], int]:

@@ -20,8 +20,10 @@ from app.utils.validators import validate_image_bytes
 
 logger = logging.getLogger(__name__)
 
-# Thread pool for CPU-bound ML inference (keeps async event loop unblocked)
-_inference_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ml_inference")
+# Single-worker thread pool for CPU-bound ML inference.
+# max_workers=1: PyTorch allocates per-thread buffers (~200MB each);
+# a second worker would push memory over Railway's 512MB container limit.
+_inference_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ml_inference")
 
 _CACHE_TTL = 3600  # 1 hour
 

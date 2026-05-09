@@ -35,13 +35,23 @@ RUN mkdir -p models
 
 # Pre-download EfficientNet-B4 pretrained weights during image build.
 # This bakes the HuggingFace cache into the image so the container starts
-# in ~2s instead of ~25s (no network download on every Railway restart).
-# HF_HOME is set here AND as a persistent ENV so runtime finds the cache.
+# instantly with no network download on every Railway restart.
+# HF_HOME persists at runtime so timm finds the cached weights.
+# TRANSFORMERS_OFFLINE=1 prevents any runtime network calls to HuggingFace.
 ENV HF_HOME=/app/models/hf_cache
 RUN python -c "\
+import torch; \
+torch.set_num_threads(1); \
 import timm; \
 m = timm.create_model('efficientnet_b4', pretrained=True, num_classes=120); \
+m.eval(); \
 print('EfficientNet-B4 weights cached in image.')"
+
+# Set offline mode so timm/HuggingFace never does network calls at runtime.
+# The weights are baked into the image above — no internet needed.
+ENV HF_DATASETS_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_OFFLINE=1
 
 # Non-root user for security
 RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
