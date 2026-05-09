@@ -177,9 +177,8 @@ async def classify_breed_with_gemini(
 
     # Pre-process image to JPEG
     jpeg_bytes = _jpeg_encode(image_bytes)
-    logger.info("Gemini Vision: sending %d KB JPEG via REST v1beta API (gemini-2.0-flash)", len(jpeg_bytes) // 1024)
+    logger.info("Gemini Vision: sending %d KB JPEG", len(jpeg_bytes) // 1024)
 
-    # Build REST API request (stable v1, not v1beta used by old SDK)
     b64_image = base64.b64encode(jpeg_bytes).decode("utf-8")
     payload = {
         "contents": [
@@ -196,42 +195,70 @@ async def classify_breed_with_gemini(
         },
     }
 
-    api_url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
-    )
+    # Try models in order; fall through to next on 429 rate-limit
+    _MODELS = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash-8b",
+    ]
+
+    import asyncio as _asyncio
 
     raw_text: str = ""
-    try:
-        req_body = _json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url=api_url,
-            data=req_body,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        loop = __import__("asyncio").get_running_loop()
-        # Run the blocking HTTP call in a thread so we don't block the event loop
-        def _http_call() -> str:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return resp.read().decode("utf-8")
+    last_error: str = ""
 
-        resp_text = await loop.run_in_executor(None, _http_call)
-        resp_data = _json.loads(resp_text)
-        raw_text = (
-            resp_data.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
+    for model_name in _MODELS:
+        api_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model_name}:generateContent?key={settings.gemini_api_key}"
         )
-        logger.info("Gemini REST v1 response (%d chars): %s", len(raw_text), raw_text[:200])
+        logger.info("Gemini Vision: trying model %s", model_name)
+        try:
+            req_body = _json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url=api_url,
+                data=req_body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            loop = _asyncio.get_running_loop()
 
-    except urllib.error.HTTPError as http_err:
-        err_body = http_err.read().decode("utf-8", errors="replace")
-        logger.error("Gemini REST API HTTP %d: %s", http_err.code, err_body[:500])
+            def _http_call() -> str:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    return resp.read().decode("utf-8")
+
+            resp_text = await loop.run_in_executor(None, _http_call)
+            resp_data = _json.loads(resp_text)
+            raw_text = (
+                resp_data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+            )
+            logger.info("Gemini %s response (%d chars): %s", model_name, len(raw_text), raw_text[:200])
+            break  # success — stop trying other models
+
+        except urllib.error.HTTPError as http_err:
+            err_body = http_err.read().decode("utf-8", errors="replace")
+            last_error = f"HTTP {http_err.code} ({model_name}): {err_body[:300]}"
+            logger.warning("Gemini %s failed: %s", model_name, last_error)
+            if http_err.code == 429:
+                # Rate limited — wait briefly then try next model
+                await _asyncio.sleep(2)
+                continue
+            # Non-429 HTTP error — no point trying other models
+            logger.error("Gemini REST non-retryable error: %s", last_error)
+            return None
+        except Exception as exc:
+            logger.error("Gemini REST call failed (%s): %s\n%s", model_name, exc, traceback.format_exc())
+            return None
+    else:
+        # All models exhausted (all returned 429)
+        logger.error("All Gemini models rate-limited. Last error: %s", last_error)
         return None
-    except Exception as exc:
-        logger.error("Gemini REST call failed: %s\n%s", exc, traceback.format_exc())
+
+    if not raw_text:
+        logger.warning("Gemini returned empty response text")
         return None
 
     data = _parse_response(raw_text)

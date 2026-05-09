@@ -147,8 +147,9 @@ async def gemini_status() -> dict:
     result: dict = {
         "gemini_api_key_set": bool(settings.gemini_api_key),
         "gemini_api_key_prefix": settings.gemini_api_key[:8] + "..." if settings.gemini_api_key else "",
-        "api_method": "REST v1beta (gemini-2.0-flash)",
+        "api_method": "REST v1beta",
         "call_success": False,
+        "model_used": None,
         "error": None,
         "raw_response": None,
     }
@@ -169,31 +170,45 @@ async def gemini_status() -> dict:
         ]}],
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 20},
     }
-    api_url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
-    )
 
-    try:
-        req = urllib.request.Request(
-            url=api_url,
-            data=_json.dumps(payload).encode("utf-8"),
-            method="POST",
-            headers={"Content-Type": "application/json"},
+    _MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
+    last_error = ""
+
+    for model_name in _MODELS:
+        api_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model_name}:generateContent?key={settings.gemini_api_key}"
         )
-        with urllib.request.urlopen(req, timeout=20) as r:
-            resp_data = _json.loads(r.read().decode())
-        result["call_success"] = True
-        result["raw_response"] = (
-            resp_data.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
-        )[:200]
-    except urllib.error.HTTPError as http_err:
-        result["error"] = f"HTTP {http_err.code}: {http_err.read().decode()[:300]}"
-    except Exception as exc:
-        result["error"] = f"{type(exc).__name__}: {exc}"
-        result["traceback"] = traceback.format_exc()
+        try:
+            req = urllib.request.Request(
+                url=api_url,
+                data=_json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as r:
+                resp_data = _json.loads(r.read().decode())
+            result["call_success"] = True
+            result["model_used"] = model_name
+            result["raw_response"] = (
+                resp_data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+            )[:200]
+            break
+        except urllib.error.HTTPError as http_err:
+            last_error = f"HTTP {http_err.code} ({model_name}): {http_err.read().decode()[:200]}"
+            if http_err.code == 429:
+                continue  # try next model
+            result["error"] = last_error
+            return result
+        except Exception as exc:
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            result["traceback"] = traceback.format_exc()
+            return result
+
+    if not result["call_success"]:
+        result["error"] = f"All models rate-limited. Last: {last_error}"
 
     return result
