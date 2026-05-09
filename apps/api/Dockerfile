@@ -32,14 +32,25 @@ COPY . .
 
 # Fail build early if any Python source file is not valid UTF-8.
 # This prevents runtime crashes like UnicodeDecodeError during imports.
-RUN python -c "\
-import pathlib; \
-bad=[]; \
-for p in pathlib.Path('.').rglob('*.py'): \
-    try: p.read_bytes().decode('utf-8'); \
-    except UnicodeDecodeError as e: bad.append((str(p), str(e))); \
-assert not bad, 'Invalid UTF-8 in Python files: ' + '; '.join([f'{p} ({e})' for p,e in bad]); \
-print('UTF-8 validation passed for all Python files.')"
+RUN python - <<'PY'
+import pathlib
+import sys
+
+bad = []
+for path in pathlib.Path('.').rglob('*.py'):
+    try:
+        path.read_bytes().decode('utf-8')
+    except UnicodeDecodeError as exc:
+        bad.append(f"{path} ({exc})")
+
+if bad:
+    print("Invalid UTF-8 in Python files:", file=sys.stderr)
+    for item in bad:
+        print(f"- {item}", file=sys.stderr)
+    raise SystemExit(1)
+
+print("UTF-8 validation passed for all Python files.")
+PY
 
 # Create models directory (weights can be mounted at runtime or baked in)
 RUN mkdir -p models
