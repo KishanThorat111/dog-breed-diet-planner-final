@@ -9,9 +9,70 @@ import { ImageIcon, Loader2, Upload } from "lucide-react";
 import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_SIZE_MB } from "@/lib/constants";
 import { toast } from "sonner";
 
+// ─── Client-side compression ──────────────────────────────────────────────────
+// Compresses an image to JPEG at the given quality without perceptible quality
+// loss. Typical smartphone photos (4-8 MB) compress to 300-800 KB at 88%.
+// Max dimension is capped at 1920 px so that the server never receives an
+// overly large decode surface.
+async function compressImage(
+  file: File,
+  maxDimension = 1920,
+  quality = 0.88
+): Promise<File> {
+  // Skip tiny files — compression overhead not worth it
+  if (file.size < 200 * 1024) return file;
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      let { width, height } = img;
+      if (width > maxDimension || height > maxDimension) {
+        const ratio = Math.min(maxDimension / width, maxDimension / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(file); // Fallback: send original
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          const compressed = new File(
+            [blob],
+            file.name.replace(/\.[^.]+$/, ".jpg"),
+            { type: "image/jpeg" }
+          );
+          // Only use compressed version if it's actually smaller
+          resolve(compressed.size < file.size ? compressed : file);
+        },
+        "image/jpeg",
+        quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file); // Fallback: send original
+    };
+
+    img.src = objectUrl;
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function ImageUploader() {
   const [preview, setPreview] = useState<string | null>(null);
   const [result, setResult] = useState<Prediction | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
   const { mutate: analyze, isPending } = useAnalyzeImage();
 
   // Revoke object URL on unmount or when preview changes to avoid memory leaks
@@ -24,17 +85,38 @@ export function ImageUploader() {
   }, [preview]);
 
   const onDrop = useCallback(
-    (accepted: File[]) => {
+    async (accepted: File[]) => {
       const file = accepted[0];
       if (!file) return;
       if (file.size > MAX_UPLOAD_SIZE_MB * 1024 * 1024) {
         toast.error(`File too large. Max ${MAX_UPLOAD_SIZE_MB}MB.`);
         return;
       }
+
+      // Show preview immediately with original file
       const url = URL.createObjectURL(file);
       setPreview(url);
       setResult(null);
-      analyze({ file }, { onSuccess: (data) => setResult(data) });
+
+      // Compress before upload
+      setIsCompressing(true);
+      let fileToUpload = file;
+      try {
+        fileToUpload = await compressImage(file);
+        if (fileToUpload !== file) {
+          const savedKB = Math.round((file.size - fileToUpload.size) / 1024);
+          if (savedKB > 10) {
+            toast.success(`Image compressed — saved ${savedKB} KB`, { duration: 2000 });
+          }
+        }
+      } catch {
+        // Compression failed silently — use original
+        fileToUpload = file;
+      } finally {
+        setIsCompressing(false);
+      }
+
+      analyze({ file: fileToUpload }, { onSuccess: (data) => setResult(data) });
     },
     [analyze]
   );
@@ -85,7 +167,9 @@ export function ImageUploader() {
           <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-background/80 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm font-medium text-foreground">Analyzing breed...</p>
+              <p className="text-sm font-medium text-foreground">
+                {isCompressing ? "Compressing image..." : "Analyzing breed..."}
+              </p>
             </div>
           </div>
         )}

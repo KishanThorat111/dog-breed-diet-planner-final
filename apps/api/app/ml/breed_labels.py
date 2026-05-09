@@ -16,7 +16,33 @@ class BreedInfo:
     size: str  # toy | small | medium | large | giant
 
 
+"""
+Dog breed label taxonomy.
+
+Originally based on Stanford Dogs Dataset (120 breeds), now extended with:
+  - Indian native breeds (Indian Pariah, Rajapalayam, Mudhol Hound, etc.)
+  - Popular breeds in India not in Stanford set (Dachshund, Dalmatian, etc.)
+  - Additional globally popular breeds
+
+The local EfficientNet model still outputs 120 classes (indices 0-119).
+Indices 120+ are Gemini-only — the vision LLM identifies them by name and
+they are mapped by key, not by index.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class BreedInfo:
+    index: int
+    key: str
+    display_name: str
+    size: str  # toy | small | medium | large | giant
+
+
 BREED_LIST: list[BreedInfo] = [
+    # ── Stanford Dogs Dataset (indices 0-119) ──────────────────────────────
     BreedInfo(0,  "chihuahua",                    "Chihuahua",                    "toy"),
     BreedInfo(1,  "japanese_spaniel",              "Japanese Spaniel",             "toy"),
     BreedInfo(2,  "maltese",                       "Maltese",                      "toy"),
@@ -137,9 +163,46 @@ BREED_LIST: list[BreedInfo] = [
     BreedInfo(117,"dingo",                         "Dingo",                        "medium"),
     BreedInfo(118,"dhole",                         "Dhole",                        "medium"),
     BreedInfo(119,"african_hunting_dog",           "African Hunting Dog",          "large"),
+
+    # ── Extended breeds — Gemini-identified (index -1, matched by key) ──────
+    # Indian native breeds
+    BreedInfo(-1, "indian_pariah",                 "Indian Pariah Dog (Indie)",     "medium"),
+    BreedInfo(-1, "rajapalayam",                   "Rajapalayam",                   "large"),
+    BreedInfo(-1, "mudhol_hound",                  "Mudhol Hound (Caravan Hound)",  "large"),
+    BreedInfo(-1, "chippiparai",                   "Chippiparai",                   "medium"),
+    BreedInfo(-1, "kombai",                        "Kombai (Indian Bore Hound)",    "medium"),
+    BreedInfo(-1, "kanni",                         "Kanni (Maiden's Beastmaster)",  "medium"),
+    BreedInfo(-1, "bakharwal",                     "Bakharwal Dog",                 "giant"),
+    BreedInfo(-1, "gaddi_kutta",                   "Gaddi Kutta (Indian Leopard Hound)", "giant"),
+    BreedInfo(-1, "rampur_hound",                  "Rampur Hound",                  "large"),
+    BreedInfo(-1, "jonangi",                       "Jonangi",                       "medium"),
+    BreedInfo(-1, "pandikona",                     "Pandikona",                     "medium"),
+    BreedInfo(-1, "taji",                          "Taji (Indian Greyhound)",       "large"),
+
+    # Globally popular breeds missing from Stanford set
+    BreedInfo(-1, "dachshund",                     "Dachshund",                     "small"),
+    BreedInfo(-1, "miniature_dachshund",           "Miniature Dachshund",           "toy"),
+    BreedInfo(-1, "dalmatian",                     "Dalmatian",                     "large"),
+    BreedInfo(-1, "cavalier_king_charles",         "Cavalier King Charles Spaniel", "small"),
+    BreedInfo(-1, "bichon_frise",                  "Bichon Frisé",                  "small"),
+    BreedInfo(-1, "havanese",                      "Havanese",                      "toy"),
+    BreedInfo(-1, "australian_shepherd",           "Australian Shepherd",           "medium"),
+    BreedInfo(-1, "goldendoodle",                  "Goldendoodle",                  "large"),
+    BreedInfo(-1, "labradoodle",                   "Labradoodle",                   "large"),
+    BreedInfo(-1, "cockapoo",                      "Cockapoo",                      "small"),
+    BreedInfo(-1, "sheepadoodle",                  "Sheepadoodle",                  "large"),
+    BreedInfo(-1, "miniature_bull_terrier",        "Miniature Bull Terrier",        "small"),
+    BreedInfo(-1, "bull_terrier",                  "Bull Terrier",                  "medium"),
+    BreedInfo(-1, "cane_corso",                    "Cane Corso",                    "large"),
+    BreedInfo(-1, "english_bulldog",               "English Bulldog",               "medium"),
+    BreedInfo(-1, "american_bulldog",              "American Bulldog",              "large"),
+    BreedInfo(-1, "belgian_shepherd",              "Belgian Shepherd",              "large"),
+    BreedInfo(-1, "husky_mix",                     "Husky Mix",                     "medium"),
+    BreedInfo(-1, "spitz",                         "Indian Spitz",                  "small"),
+    BreedInfo(-1, "mixed_breed",                   "Mixed Breed / Crossbreed",      "medium"),
 ]
 
 # Index lookups
-INDEX_TO_BREED: dict[int, BreedInfo] = {b.index: b for b in BREED_LIST}
+INDEX_TO_BREED: dict[int, BreedInfo] = {b.index: b for b in BREED_LIST if b.index >= 0}
 KEY_TO_BREED: dict[str, BreedInfo] = {b.key: b for b in BREED_LIST}
-NUM_CLASSES = len(BREED_LIST)  # 120
+NUM_CLASSES = 120  # Local EfficientNet model output size (unchanged)

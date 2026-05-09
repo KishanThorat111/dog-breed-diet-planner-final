@@ -86,10 +86,70 @@ BREED_OVERLAYS: dict[str, BreedOverlay] = {
 
     # Heart support
     "cavalier": BreedOverlay(heart_support=True),
+    "cavalier_king_charles": BreedOverlay(heart_support=True, obesity_prone=True),
 
     # Skin/Coat
     "irish_setter":         BreedOverlay(skin_support=True),
     "chesapeake_bay_retriever": BreedOverlay(skin_support=True),
+
+    # ── Breeds popular in India ─────────────────────────────────────────────
+    # Dachshund — intervertebral disc disease risk, keep lean
+    "dachshund":            BreedOverlay(obesity_prone=True, joint_support=True, caloric_modifier=0.88),
+    "miniature_dachshund":  BreedOverlay(obesity_prone=True, joint_support=True, caloric_modifier=0.88),
+
+    # Dalmatian — low purine (urate urinary stones)
+    "dalmatian":            BreedOverlay(low_purine=True),
+
+    # Bulldogs in India
+    "english_bulldog":      BreedOverlay(obesity_prone=True, brachycephalic=True, caloric_modifier=0.83,
+                                         joint_support=True),
+    "american_bulldog":     BreedOverlay(joint_support=True, caloric_modifier=0.95),
+
+    # Cane Corso — large, bloat risk
+    "cane_corso":           BreedOverlay(bloat_risk=True, joint_support=True),
+
+    # Bull Terrier — kidney disease prone, moderate protein
+    "bull_terrier":         BreedOverlay(heart_support=True),
+
+    # Doodle mixes — coat support
+    "goldendoodle":         BreedOverlay(skin_support=True, joint_support=True),
+    "labradoodle":          BreedOverlay(skin_support=True, obesity_prone=True),
+    "cockapoo":             BreedOverlay(obesity_prone=True, skin_support=True),
+
+    # Australian Shepherd — high energy, active default
+    "australian_shepherd":  BreedOverlay(caloric_modifier=1.05, joint_support=True),
+
+    # Indian Spitz — obesity prone (small, sedentary in Indian apartments)
+    "spitz":                BreedOverlay(obesity_prone=True, caloric_modifier=0.90),
+
+    # ── Indian Native Breeds ─────────────────────────────────────────────────
+    # Indian Pariah Dog (Indie) — lean, hardy, adapted to Indian climate
+    # Low caloric needs, minimal supplements, heat-tolerant
+    "indian_pariah":        BreedOverlay(caloric_modifier=0.92),
+
+    # Rajapalayam — large sighthound, lean, single coat
+    "rajapalayam":          BreedOverlay(skin_support=True, caloric_modifier=0.95),
+
+    # Mudhol Hound (Caravan Hound) — desert sighthound, very lean metabolism
+    "mudhol_hound":         BreedOverlay(caloric_modifier=0.90, skin_support=True),
+
+    # Chippiparai — light sighthound, heat adapted
+    "chippiparai":          BreedOverlay(caloric_modifier=0.90),
+
+    # Kombai — medium-large, guard dog, moderate activity
+    "kombai":               BreedOverlay(caloric_modifier=0.95),
+
+    # Kanni — light sighthound, very lean
+    "kanni":                BreedOverlay(caloric_modifier=0.88),
+
+    # Bakharwal — giant mountain dog, joint support critical
+    "bakharwal":            BreedOverlay(joint_support=True, bloat_risk=True, caloric_modifier=1.05),
+
+    # Gaddi Kutta — giant, mountain environment, high energy
+    "gaddi_kutta":          BreedOverlay(joint_support=True, bloat_risk=True, caloric_modifier=1.05),
+
+    # Rampur Hound — large sighthound, lean
+    "rampur_hound":         BreedOverlay(caloric_modifier=0.90, skin_support=True),
 }
 
 
@@ -242,7 +302,7 @@ class DietEngine:
         feeding_schedule = self._build_schedule(daily_calories, meals_per_day)
 
         # 11. Notes
-        notes = self._build_notes(overlay, is_puppy, health_conditions)
+        notes = self._build_notes(overlay, is_puppy, health_conditions, breed=breed)
 
         return DietPlanResult(
             breed=breed,
@@ -426,7 +486,7 @@ class DietEngine:
             for name, time, fraction in template
         ]
 
-    def _build_notes(self, overlay: BreedOverlay, is_puppy: bool, health_conditions: list[str]) -> str:
+    def _build_notes(self, overlay: BreedOverlay, is_puppy: bool, health_conditions: list[str], breed: str = "") -> str:
         notes_parts = []
         if is_puppy:
             notes_parts.append("Puppy nutritional requirements are higher per kg body weight. Transition to adult food at 12 months (or 18-24 months for giant breeds).")
@@ -436,6 +496,10 @@ class DietEngine:
             notes_parts.append("Brachycephalic breed: Use a puzzle feeder or slow-feeder bowl to prevent gulping air. Choose smaller kibble sizes.")
         if overlay.obesity_prone:
             notes_parts.append("Obesity-prone breed: Measure food precisely — do not free-feed. Weigh food with a kitchen scale. Monitor body condition score monthly.")
+        # Indian native breed notes
+        if breed in ("indian_pariah", "rajapalayam", "mudhol_hound", "chippiparai",
+                     "kombai", "kanni", "rampur_hound", "jonangi", "pandikona"):
+            notes_parts.append("Indian native breed: Highly adaptable and heat-tolerant. Avoid overfeeding — these breeds are lean by nature. In Indian summers, feed during cooler hours (early morning/evening) and ensure constant access to fresh water.")
         if health_conditions:
             notes_parts.append("⚠️ Active health conditions detected. These recommendations are general guidelines. Consult your veterinarian for a medically-tailored diet plan.")
         notes_parts.append("Ensure fresh water is available at all times. Transition to any new diet gradually over 7-10 days to avoid GI upset.")
