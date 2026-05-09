@@ -18,7 +18,7 @@ class TestRERCalculation:
             weight_kg=10.0,
             activity_level="moderate",
         )
-        # RER = 70 × 10^0.75 ≈ 393.6, multiplier ~1.44 → DER ~567 (with 0.9 obesity modifier)
+        # RER = 70 �— 10^0.75 ≈ 393.6, multiplier ~1.44 → DER ~567 (with 0.9 obesity modifier)
         assert 400 <= result.daily_calories <= 700
 
     def test_rer_30kg_dog(self, engine: DietEngine) -> None:
@@ -28,7 +28,7 @@ class TestRERCalculation:
             weight_kg=30.0,
             activity_level="active",
         )
-        # RER = 70 × 30^0.75 ≈ 1014, multiplier ~2.0 → DER ~2028
+        # RER = 70 �— 30^0.75 ≈ 1014, multiplier ~2.0 → DER ~2028
         assert 1500 <= result.daily_calories <= 2500
 
     def test_puppy_higher_calories(self, engine: DietEngine) -> None:

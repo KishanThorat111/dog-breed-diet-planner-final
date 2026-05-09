@@ -53,7 +53,7 @@ def validate_image_bytes(image_bytes: bytes, declared_content_type: str) -> None
         if w > MAX_IMAGE_DIMENSION or h > MAX_IMAGE_DIMENSION:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Image dimensions too large: {w}×{h}. Maximum: {MAX_IMAGE_DIMENSION}px",
+                detail=f"Image dimensions too large: {w}�—{h}. Maximum: {MAX_IMAGE_DIMENSION}px",
             )
     except HTTPException:
         raise

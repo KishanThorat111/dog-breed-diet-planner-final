@@ -1,5 +1,5 @@
 """
-JWT authentication — HS256 tokens signed with SECRET_KEY.
+JWT authentication â€” HS256 tokens signed with SECRET_KEY.
 No external auth service required. Works locally and in production.
 """
 from __future__ import annotations
@@ -51,7 +51,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
 ):
-    """FastAPI dependency — verifies JWT and returns the User from DB."""
+    """FastAPI dependency â€” verifies JWT and returns the User from DB."""
     from app.models.user import User
     from sqlalchemy import select
 
@@ -79,7 +79,7 @@ async def get_current_user(
 
 
 async def require_admin(current_user=Depends(get_current_user)):
-    """FastAPI dependency — requires admin role."""
+    """FastAPI dependency â€” requires admin role."""
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user

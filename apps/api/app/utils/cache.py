@@ -1,5 +1,5 @@
 """
-In-memory cache — no Redis required.
+In-memory cache â€” no Redis required.
 Simple TTL dict. Good enough for a single-process deployment.
 If you need persistence or multi-instance caching, swap in Redis later.
 """

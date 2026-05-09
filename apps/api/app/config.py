@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # ML
     ml_model_path: str = ""
 
-    # CORS — comma-separated list
+    # CORS â€” comma-separated list
     allowed_origins: str = "http://localhost:3000"
 
     # Rate limiting
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
 
     # ---------------------------------------------------------------------------
-    # AI Providers — backend only, never exposed to frontend
+    # AI Providers â€” backend only, never exposed to frontend
     # ---------------------------------------------------------------------------
     # Google Gemini (free tier: 15 RPM, 1M tokens/day on gemini-1.5-flash)
     gemini_api_key: str = ""

@@ -1,5 +1,5 @@
 """
-Auth router — register, login, and me endpoints.
+Auth router â€” register, login, and me endpoints.
 Uses HS256 JWT tokens. No external auth service required.
 """
 from __future__ import annotations
