@@ -89,9 +89,15 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # --- CORS ---
+# allow_origins covers explicit production/dev origins from env var.
+# allow_origin_regex covers all Vercel preview URLs (unique deploy URLs,
+# git-branch URLs) so sign-up/sign-in work from any Vercel deployment URL.
+_VERCEL_PREVIEW_RE = r"https://dog-breed-diet-planner-final[^.]*\.vercel\.app"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
+    allow_origin_regex=_VERCEL_PREVIEW_RE,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
