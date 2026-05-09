@@ -1,0 +1,20 @@
+# Normalize line endings to LF in the repository for all text files.
+# This prevents Windows from committing CRLF bytes that break Python on Linux.
+* text=auto eol=lf
+
+# Explicitly mark Python source files as text with LF
+*.py text eol=lf
+
+# Binary files - never convert line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.pt binary
+*.pth binary

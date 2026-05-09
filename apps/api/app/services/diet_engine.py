@@ -7,10 +7,10 @@ Science-based personalized dog diet planning using:
   - Breed-specific health overlays
 
 Algorithm:
-  1. Calculate Resting Energy Requirement (RER): 70 �— BW(kg)^0.75
+  1. Calculate Resting Energy Requirement (RER): 70 Ã— BW(kg)^0.75
   2. Determine life-stage multiplier
   3. Apply breed-specific modifiers (obesity-prone → reduce by 10%)
-  4. Calculate Daily Energy Requirement (DER) = RER �— multiplier
+  4. Calculate Daily Energy Requirement (DER) = RER Ã— multiplier
   5. Distribute macronutrients per AAFCO minimum guidelines
   6. Build food recommendations and feeding schedule
   7. Apply allergy exclusions
