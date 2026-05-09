@@ -195,11 +195,12 @@ async def classify_breed_with_gemini(
         },
     }
 
-    # Try models in order; fall through to next on 429 rate-limit
+    # Try models in order; fall through to next on 429 rate-limit or 404 not-found
     _MODELS = [
         "gemini-2.0-flash",
         "gemini-2.0-flash-lite",
-        "gemini-1.5-flash-8b",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
     ]
 
     import asyncio as _asyncio
@@ -242,11 +243,11 @@ async def classify_breed_with_gemini(
             err_body = http_err.read().decode("utf-8", errors="replace")
             last_error = f"HTTP {http_err.code} ({model_name}): {err_body[:300]}"
             logger.warning("Gemini %s failed: %s", model_name, last_error)
-            if http_err.code == 429:
-                # Rate limited — wait briefly then try next model
-                await _asyncio.sleep(2)
+            if http_err.code in (429, 404):
+                # Rate limited or model unavailable — try next model
+                await _asyncio.sleep(1)
                 continue
-            # Non-429 HTTP error — no point trying other models
+            # Other HTTP error — non-retryable
             logger.error("Gemini REST non-retryable error: %s", last_error)
             return None
         except Exception as exc:

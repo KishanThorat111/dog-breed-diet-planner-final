@@ -171,7 +171,7 @@ async def gemini_status() -> dict:
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 20},
     }
 
-    _MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
+    _MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"]
     last_error = ""
 
     for model_name in _MODELS:
@@ -199,7 +199,7 @@ async def gemini_status() -> dict:
             break
         except urllib.error.HTTPError as http_err:
             last_error = f"HTTP {http_err.code} ({model_name}): {http_err.read().decode()[:200]}"
-            if http_err.code == 429:
+            if http_err.code in (429, 404):
                 continue  # try next model
             result["error"] = last_error
             return result
