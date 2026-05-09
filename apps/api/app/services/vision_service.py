@@ -10,7 +10,6 @@ Falls back to the local EfficientNet ML model when no API key is configured.
 """
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import re
@@ -126,6 +125,31 @@ def _map_to_known_breed(breed_key: str, display_name: str = "") -> "BreedInfo | 
     )
 
 
+def _jpeg_encode(image_bytes: bytes) -> bytes:
+    """
+    Re-encode any image to JPEG. Gemini works most reliably with JPEG.
+    Returns original bytes if re-encoding fails.
+    """
+    try:
+        import io
+        from PIL import Image as _PilImg
+        img = _PilImg.open(io.BytesIO(image_bytes))
+        if img.mode in ("RGBA", "P", "LA"):
+            bg = _PilImg.new("RGB", img.size, (255, 255, 255))
+            if img.mode in ("RGBA", "LA"):
+                bg.paste(img, mask=img.split()[-1])
+            else:
+                bg.paste(img)
+            img = bg
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=92, optimize=True)
+        return buf.getvalue()
+    except Exception:
+        return image_bytes
+
+
 async def classify_breed_with_gemini(
     image_bytes: bytes,
     content_type: str,
@@ -135,30 +159,47 @@ async def classify_breed_with_gemini(
     Returns None if Gemini is not configured or the call fails (caller falls
     back to local EfficientNet model).
     """
+    import traceback
     from app.config import settings
+
     if not settings.gemini_api_key:
-        logger.debug("GEMINI_API_KEY not set — skipping vision classification.")
+        logger.warning("GEMINI_API_KEY is empty — Gemini Vision disabled. "
+                       "Set GEMINI_API_KEY in Railway Variables to enable accurate breed detection.")
         return None
 
+    # Pre-process image to JPEG — Gemini handles JPEG most reliably across SDK versions
+    jpeg_bytes = _jpeg_encode(image_bytes)
+    logger.info("Gemini Vision: sending %d KB JPEG image", len(jpeg_bytes) // 1024)
+
+    raw_text: str = ""
+
+    # ── Attempt 1: google-generativeai SDK (GenerativeModel style) ────────
     try:
         import google.generativeai as genai  # type: ignore[import]
         genai.configure(api_key=settings.gemini_api_key)
 
-        model = genai.GenerativeModel(
-            "gemini-1.5-flash",
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.02,           # Near-deterministic
-                max_output_tokens=512,
-                response_mime_type="application/json",
-            ),
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        # NOTE: Do NOT pass response_mime_type here — it breaks in many SDK
+        # versions when combined with image content. We parse JSON ourselves.
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.02,
+            max_output_tokens=600,
         )
 
-        image_part = {"mime_type": content_type, "data": image_bytes}
-        response = model.generate_content(contents=[_CLASSIFY_PROMPT, image_part])
-        raw_text: str = response.text or ""
+        image_part = {"mime_type": "image/jpeg", "data": jpeg_bytes}
+        response = model.generate_content(
+            contents=[_CLASSIFY_PROMPT, image_part],
+            generation_config=generation_config,
+        )
+        raw_text = response.text or ""
+        logger.info("Gemini Vision raw response (%d chars): %s", len(raw_text), raw_text[:200])
 
     except Exception as exc:
-        logger.error("Gemini vision call failed: %s", exc)
+        logger.error(
+            "Gemini vision call failed (attempt 1): %s\n%s",
+            exc, traceback.format_exc()
+        )
         return None
 
     data = _parse_response(raw_text)

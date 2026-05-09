@@ -127,3 +127,57 @@ async def list_predictions(
         page_size=page_size,
         pages=math.ceil(total / page_size) if total else 0,
     )
+
+
+@router.get("/gemini-status")
+async def gemini_status() -> dict:
+    """
+    Quick diagnostic: checks whether Gemini Vision is configured and reachable.
+    Sends a 1x1 white JPEG to Gemini and reports the result.
+    """
+    import io
+    import traceback
+    from app.config import settings
+
+    result: dict = {
+        "gemini_api_key_set": bool(settings.gemini_api_key),
+        "gemini_api_key_prefix": settings.gemini_api_key[:8] + "..." if settings.gemini_api_key else "",
+        "sdk_available": False,
+        "call_success": False,
+        "error": None,
+        "raw_response": None,
+    }
+
+    if not settings.gemini_api_key:
+        return result
+
+    try:
+        import google.generativeai as genai  # type: ignore[import]
+        result["sdk_available"] = True
+        result["sdk_version"] = getattr(genai, "__version__", "unknown")
+    except ImportError as e:
+        result["error"] = f"SDK import failed: {e}"
+        return result
+
+    # Create a tiny white 1x1 JPEG
+    from PIL import Image as _Img
+    buf = io.BytesIO()
+    _Img.new("RGB", (10, 10), (255, 255, 255)).save(buf, format="JPEG")
+    tiny_jpeg = buf.getvalue()
+
+    try:
+        genai.configure(api_key=settings.gemini_api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        generation_config = genai.types.GenerationConfig(temperature=0.1, max_output_tokens=100)
+        response = model.generate_content(
+            contents=["Is there a dog in this image? Reply with just yes or no.",
+                      {"mime_type": "image/jpeg", "data": tiny_jpeg}],
+            generation_config=generation_config,
+        )
+        result["call_success"] = True
+        result["raw_response"] = (response.text or "")[:200]
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+        result["traceback"] = traceback.format_exc()
+
+    return result
