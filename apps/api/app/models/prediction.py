@@ -31,10 +31,10 @@ class AIPrediction(Base, UUIDMixin, TimestampMixin):
     pet_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pets.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    upload_id: Mapped[uuid.UUID] = mapped_column(
+    upload_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("uploads.id", ondelete="RESTRICT"),
-        nullable=False,
+        ForeignKey("uploads.id", ondelete="SET NULL"),
+        nullable=True,
     )
     top_breed: Mapped[str] = mapped_column(String(100), nullable=False)
     top_confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)

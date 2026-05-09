@@ -56,37 +56,66 @@ class PredictionService:
 
         loop = asyncio.get_running_loop()
 
-        # 4. Run inference FIRST — upload to R2 only on success
-        result: InferencePipelineResult = await loop.run_in_executor(
-            _inference_executor, run_inference, image_bytes
-        )
+        # 4. Try Gemini Vision first (highest accuracy).
+        #    Falls back to local EfficientNet model if Gemini is unavailable.
+        from app.services.vision_service import classify_breed_with_gemini
 
-        # 5. Upload to R2 (async-wrapped, after successful inference)
-        r2_key = await loop.run_in_executor(
-            None,
-            lambda: storage_service.upload_image(
-                image_bytes, str(user_id), original_filename, content_type
-            ),
-        )
+        ai_vision = await classify_breed_with_gemini(image_bytes, content_type)
 
-        # 6. Persist upload record
-        upload = Upload(
-            user_id=user_id,
-            r2_key=r2_key,
-            r2_bucket=settings.cloudflare_r2_bucket_name,
-            original_filename=original_filename[:255],
-            content_type=content_type,
-            size_bytes=len(image_bytes),
-            sha256_hash=image_hash,
-        )
-        db.add(upload)
-        await db.flush()  # Get upload.id without committing
+        if ai_vision is not None:
+            # Build a synthetic InferencePipelineResult from Gemini's response
+            result = InferencePipelineResult(
+                top_breed=ai_vision["top_breed"],
+                top_confidence=ai_vision["top_confidence"],
+                top_display_name=ai_vision["top_display_name"],
+                all_predictions=ai_vision["all_predictions"],
+                model_version=f"gemini-vision-1.5-flash",
+                inference_time_ms=0,
+                image_hash=image_hash,
+            )
+            logger.info(
+                "Gemini Vision classified breed=%s confidence=%.2f",
+                result.top_breed, result.top_confidence,
+            )
+        else:
+            # Fallback: local EfficientNet model
+            result = await loop.run_in_executor(
+                _inference_executor, run_inference, image_bytes
+            )
+
+        # 5. Upload to R2 — non-fatal if R2 is not configured
+        r2_key: str | None = None
+        try:
+            r2_key = await loop.run_in_executor(
+                None,
+                lambda: storage_service.upload_image(
+                    image_bytes, str(user_id), original_filename, content_type
+                ),
+            )
+        except Exception as r2_err:
+            logger.warning("R2 upload skipped (non-fatal): %s", r2_err)
+
+        # 6. Persist upload record (only if R2 upload succeeded)
+        upload_id: uuid.UUID | None = None
+        if r2_key:
+            upload = Upload(
+                user_id=user_id,
+                r2_key=r2_key,
+                r2_bucket=settings.cloudflare_r2_bucket_name,
+                original_filename=original_filename[:255],
+                content_type=content_type,
+                size_bytes=len(image_bytes),
+                sha256_hash=image_hash,
+            )
+            db.add(upload)
+            await db.flush()  # Get upload.id without committing
+            upload_id = upload.id
 
         # 7. Persist prediction
         prediction = AIPrediction(
             user_id=user_id,
             pet_id=pet_id,
-            upload_id=upload.id,
+            upload_id=upload_id,
             top_breed=result.top_breed,
             top_confidence=result.top_confidence,
             all_predictions=result.all_predictions,
@@ -100,8 +129,9 @@ class PredictionService:
         # 8. Cache the result for future identical uploads
         await self._cache_result(image_hash, result)
 
-        # 9. Attach image URL for response
-        prediction.__dict__["_image_url"] = storage_service.get_presigned_url(r2_key)
+        # 9. Attach image URL for response (None if R2 not configured)
+        image_url = storage_service.get_presigned_url(r2_key) if r2_key else None
+        prediction.__dict__["_image_url"] = image_url
 
         logger.info(
             "Prediction id=%s breed=%s confidence=%.2f inference=%dms",
