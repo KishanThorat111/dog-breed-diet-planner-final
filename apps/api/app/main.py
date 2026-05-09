@@ -169,6 +169,27 @@ async def add_security_headers(request: Request, call_next):  # type: ignore[no-
     return response
 
 
+# --- Global exception handler ---
+# Ensures unhandled exceptions return a proper JSONResponse so that the CORS
+# middleware (outermost layer) can still add Access-Control-Allow-Origin to the
+# error response.  Without this, exceptions that escape BaseHTTPMiddleware
+# layers can cause the connection to close without CORS headers, making the
+# browser report a CORS error instead of the real 500.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error(
+        "Unhandled exception on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
 # --- Routers ---
 API_V1 = "/api/v1"
 app.include_router(auth.router,        prefix=f"{API_V1}/auth",        tags=["auth"])

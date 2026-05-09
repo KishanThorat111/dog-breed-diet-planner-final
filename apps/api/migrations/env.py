@@ -22,7 +22,12 @@ target_metadata = Base.metadata
 # Override sqlalchemy.url from environment variable
 database_url = os.environ.get("DATABASE_URL", "")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    # Alembic DDL requires the session pooler (port 5432), NOT the transaction
+    # pooler (port 6543).  pgBouncer in transaction mode blocks advisory locks
+    # and certain DDL statements that Alembic needs.  Supabase exposes session
+    # mode on the same host at port 5432, so we just swap the port.
+    migration_url = database_url.replace(":6543/", ":5432/")
+    config.set_main_option("sqlalchemy.url", migration_url)
 
 
 def run_migrations_offline() -> None:
