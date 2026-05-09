@@ -33,6 +33,16 @@ COPY . .
 # Create models directory (weights can be mounted at runtime or baked in)
 RUN mkdir -p models
 
+# Pre-download EfficientNet-B4 pretrained weights during image build.
+# This bakes the HuggingFace cache into the image so the container starts
+# in ~2s instead of ~25s (no network download on every Railway restart).
+# HF_HOME is set here AND as a persistent ENV so runtime finds the cache.
+ENV HF_HOME=/app/models/hf_cache
+RUN python -c "\
+import timm; \
+m = timm.create_model('efficientnet_b4', pretrained=True, num_classes=120); \
+print('EfficientNet-B4 weights cached in image.')"
+
 # Non-root user for security
 RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
 USER appuser
