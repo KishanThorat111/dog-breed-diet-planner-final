@@ -195,10 +195,9 @@ async def classify_breed_with_gemini(
         },
     }
 
-    # Try models in order; fall through to next on 429 rate-limit or 404 not-found
+    # gemini-2.0-flash is the only model available on free-tier new API keys
     _MODELS = [
         "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
     ]
 
     import asyncio as _asyncio
