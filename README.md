@@ -2,7 +2,7 @@
 
 An AI-powered SaaS that identifies your dog's breed from a photo and generates a personalized diet plan based on NRC/AAFCO nutritional guidelines.
 
-**Tech Stack**: FastAPI · Next.js 14 · PostgreSQL (Supabase) · Cloudflare R2 · Gemini API · Railway · Vercel
+**Tech Stack**: FastAPI Â· Next.js 14 Â· PostgreSQL (Supabase) Â· Cloudflare R2 Â· Gemini API Â· Railway Â· Vercel
 
 ---
 
@@ -129,7 +129,7 @@ asyncio.run(make_admin('your@email.com'))
 
 ## Deploying to Production
 
-### Step 1 — Set up Supabase (database)
+### Step 1 â€” Set up Supabase (database)
 
 1. Create a project at https://supabase.com
 2. Go to **Settings ? Database ? Connection string ? URI**
@@ -140,13 +140,13 @@ Example:
 postgresql+asyncpg://postgres.xxxx:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 ```
 
-### Step 2 — Set up Cloudflare R2 (image storage)
+### Step 2 â€” Set up Cloudflare R2 (image storage)
 
 1. Go to https://dash.cloudflare.com ? **R2** ? Create bucket
 2. Go to **R2 ? Manage API Tokens** ? Create token with Read+Write access
 3. Note your Account ID, Access Key, and Secret Key
 
-### Step 3 — Deploy backend to Railway
+### Step 3 â€” Deploy backend to Railway
 
 1. Go to https://railway.app ? **New Project** ? **Deploy from GitHub**
 2. Select your repo. Railway detects `apps/api/Dockerfile` automatically.
@@ -175,7 +175,7 @@ railway login
 railway run alembic upgrade head
 ```
 
-### Step 4 — Deploy frontend to Vercel
+### Step 4 â€” Deploy frontend to Vercel
 
 1. Go to https://vercel.com ? **New Project** ? Import from GitHub
 2. Set **Root Directory** to `apps/web`
@@ -239,24 +239,24 @@ railway run alembic upgrade head
 ```
 dog-breed-diet-planner/
 +-- apps/
-¦   +-- api/                  # FastAPI backend
-¦   ¦   +-- app/
-¦   ¦   ¦   +-- ai/           # AI provider layer (Gemini, OpenAI, Anthropic)
-¦   ¦   ¦   +-- middleware/   # JWT auth (HS256, no external service)
-¦   ¦   ¦   +-- ml/           # EfficientNet-B4 breed classifier
-¦   ¦   ¦   +-- models/       # SQLAlchemy ORM models
-¦   ¦   ¦   +-- routers/      # REST API endpoints
-¦   ¦   ¦   +-- services/     # Business logic
-¦   ¦   ¦   +-- utils/        # In-memory cache, R2 storage
-¦   ¦   +-- migrations/       # Alembic database migrations
-¦   ¦   +-- pyproject.toml
-¦   +-- web/                  # Next.js 14 frontend
-¦       +-- src/
-¦       ¦   +-- app/          # App Router pages
-¦       ¦   +-- components/   # UI components
-¦       ¦   +-- hooks/        # TanStack Query data hooks
-¦       ¦   +-- lib/          # API client, JWT storage
-¦       +-- package.json
+Â¦   +-- api/                  # FastAPI backend
+Â¦   Â¦   +-- app/
+Â¦   Â¦   Â¦   +-- ai/           # AI provider layer (Gemini, OpenAI, Anthropic)
+Â¦   Â¦   Â¦   +-- middleware/   # JWT auth (HS256, no external service)
+Â¦   Â¦   Â¦   +-- ml/           # EfficientNet-B4 breed classifier
+Â¦   Â¦   Â¦   +-- models/       # SQLAlchemy ORM models
+Â¦   Â¦   Â¦   +-- routers/      # REST API endpoints
+Â¦   Â¦   Â¦   +-- services/     # Business logic
+Â¦   Â¦   Â¦   +-- utils/        # In-memory cache, R2 storage
+Â¦   Â¦   +-- migrations/       # Alembic database migrations
+Â¦   Â¦   +-- pyproject.toml
+Â¦   +-- web/                  # Next.js 14 frontend
+Â¦       +-- src/
+Â¦       Â¦   +-- app/          # App Router pages
+Â¦       Â¦   +-- components/   # UI components
+Â¦       Â¦   +-- hooks/        # TanStack Query data hooks
+Â¦       Â¦   +-- lib/          # API client, JWT storage
+Â¦       +-- package.json
 +-- README.md
 ```
 

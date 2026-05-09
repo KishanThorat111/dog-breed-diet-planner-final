@@ -156,7 +156,7 @@ async def health_check() -> dict:
 
 @app.get("/ready", tags=["health"])
 async def readiness_check() -> dict:
-    """Readiness probe � fails if DB is unavailable."""
+    """Readiness probe - fails if DB is unavailable."""
     from app.database import engine
     from sqlalchemy import text
 
