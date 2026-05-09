@@ -85,10 +85,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Railway injects $PORT at runtime. Fall back to 8000 for local/Docker.
-# JSON exec form with /bin/sh ensures ${PORT:-8000} is shell-expanded
-# even when Railway invokes CMD in exec form.
+# Run Alembic migrations first (idempotent — safe to run on every start).
 # exec replaces the shell so uvicorn is PID 1 and receives signals.
 # Single worker — ML model and in-process singletons must not be forked.
 # Scale horizontally via Railway replicas instead.
-CMD ["/bin/sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info --access-log --proxy-headers --forwarded-allow-ips '*'"]
+CMD ["/bin/sh", "-c", "python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info --access-log --proxy-headers --forwarded-allow-ips '*'"]
 

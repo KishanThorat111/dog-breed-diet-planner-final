@@ -7,6 +7,4 @@ healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
-# Runs before the new deploy goes live � creates/migrates DB tables.
-# Supabase transaction pooler (port 6543) works fine for Alembic DDL.
-releaseCommand = "python -m alembic upgrade head"
+
