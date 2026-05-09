@@ -171,7 +171,7 @@ async def gemini_status() -> dict:
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 20},
     }
 
-    _MODELS = ["gemini-2.0-flash"]
+    _MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"]
     last_error = ""
 
     for model_name in _MODELS:

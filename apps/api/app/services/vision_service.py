@@ -195,8 +195,10 @@ async def classify_breed_with_gemini(
         },
     }
 
-    # gemini-2.0-flash is the only model available on free-tier new API keys
+    # gemini-2.5-flash is the current recommended model (Tier 1 Postpay)
+    # Falls back to gemini-2.0-flash if 2.5 preview is unavailable
     _MODELS = [
+        "gemini-2.5-flash",
         "gemini-2.0-flash",
     ]
 
