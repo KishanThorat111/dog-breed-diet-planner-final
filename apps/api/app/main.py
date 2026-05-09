@@ -113,15 +113,29 @@ class CORSTraceMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception as exc:
-            if should_trace:
-                logger.error(
-                    "cors.trace.error method=%s path=%s origin=%s error=%s",
-                    request.method,
-                    path,
-                    origin,
-                    exc,
-                )
-            raise
+            logger.error(
+                "cors.trace.error method=%s path=%s origin=%s error=%s",
+                request.method,
+                path,
+                origin,
+                exc,
+                exc_info=True,
+            )
+            # Do NOT re-raise. Re-raising would bypass CORSMiddleware (which is
+            # inside this middleware in the stack), so the error response would
+            # have no Access-Control-Allow-Origin header and the browser would
+            # report a CORS error instead of the real 500.
+            # Instead, return a JSONResponse and add CORS headers manually.
+            from fastapi.responses import JSONResponse as _JSONResponse
+            _err = _JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"},
+            )
+            if origin:
+                _err.headers["Access-Control-Allow-Origin"] = origin
+                _err.headers["Access-Control-Allow-Credentials"] = "true"
+                _err.headers["Vary"] = "Origin"
+            return _err
 
         if should_trace:
             logger.info(
