@@ -43,17 +43,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Railway injects $PORT at runtime. Fall back to 8000 for local/Docker.
-# Single worker — ML model, ThreadPoolExecutor and Redis connections are
-# in-process singletons that must not be forked across workers.
-# Scale horizontally via Railway replicas instead.
-CMD uvicorn app.main:app \
-    --host 0.0.0.0 \
-    --port ${PORT:-8000} \
-    --workers 1 \
-    --loop uvloop \
-    --http httptools \
-    --log-level warning \
-    --access-log \
-    --proxy-headers \
-    --forwarded-allow-ips "*"
+# Use JSON exec form with an explicit shell so that shell-variable expansion
+# (${PORT:-8000}) works even when Railway invokes the CMD in exec form.
+# exec replaces the shell process so uvicorn is PID 1 and receives signals.
+# Single worker — ML model, ThreadPoolExecutor and in-process singletons
+# must not be forked across workers. Scale via Railway replicas instead.
+CMD ["/bin/sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --loop uvloop --http httptools --log-level warning --access-log --proxy-headers --forwarded-allow-ips '*'"]
 
