@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.middleware.rate_limiter import limiter
@@ -89,6 +90,56 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     expose_headers=["X-Request-ID", "X-Response-Time-Ms"],
 )
+
+
+class CORSTraceMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
+        path = request.url.path
+        origin = request.headers.get("origin", "")
+        acr_method = request.headers.get("access-control-request-method", "")
+        acr_headers = request.headers.get("access-control-request-headers", "")
+
+        should_trace = request.method == "OPTIONS" or path.startswith("/api/v1/auth")
+        if should_trace:
+            logger.info(
+                "cors.trace.in method=%s path=%s origin=%s acr_method=%s acr_headers=%s",
+                request.method,
+                path,
+                origin,
+                acr_method,
+                acr_headers,
+            )
+
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            if should_trace:
+                logger.error(
+                    "cors.trace.error method=%s path=%s origin=%s error=%s",
+                    request.method,
+                    path,
+                    origin,
+                    exc,
+                )
+            raise
+
+        if should_trace:
+            logger.info(
+                "cors.trace.out method=%s path=%s status=%s acao=%s acam=%s acah=%s req_id=%s",
+                request.method,
+                path,
+                response.status_code,
+                response.headers.get("access-control-allow-origin", ""),
+                response.headers.get("access-control-allow-methods", ""),
+                response.headers.get("access-control-allow-headers", ""),
+                response.headers.get("x-request-id", ""),
+            )
+
+        return response
+
+
+# Add this AFTER CORS so we can log final CORS headers on responses.
+app.add_middleware(CORSTraceMiddleware)
 
 
 # --- Request ID + timing ---

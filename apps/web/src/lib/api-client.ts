@@ -1,12 +1,91 @@
-import axios from "axios";
+import axios, { AxiosError, AxiosInstance } from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_DEBUG = process.env.NEXT_PUBLIC_API_DEBUG === "true" || process.env.NODE_ENV !== "production";
 
-// Base client  no auth, for public endpoints
+function nextRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function attachApiDebugInterceptors(client: AxiosInstance, withAuth: boolean): void {
+  client.interceptors.request.use((config) => {
+    const requestId = nextRequestId();
+    const headers = config.headers ?? {};
+    (headers as Record<string, string>)["X-Request-ID"] = requestId;
+
+    if (withAuth) {
+      const token = tokenStorage.getToken();
+      if (token) {
+        (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+      }
+    }
+
+    config.headers = headers;
+
+    if (API_DEBUG && typeof window !== "undefined") {
+      const fullUrl = `${config.baseURL ?? ""}${config.url ?? ""}`;
+      console.info("[api:req]", {
+        requestId,
+        method: config.method?.toUpperCase(),
+        url: fullUrl,
+        origin: window.location.origin,
+      });
+    }
+
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (response) => {
+      if (API_DEBUG && typeof window !== "undefined") {
+        const fullUrl = `${response.config.baseURL ?? ""}${response.config.url ?? ""}`;
+        console.info("[api:res]", {
+          status: response.status,
+          url: fullUrl,
+          requestId: response.headers["x-request-id"] ?? "",
+          acao: response.headers["access-control-allow-origin"] ?? "",
+        });
+      }
+      return response;
+    },
+    (error: AxiosError) => {
+      if (error.response?.status === 401) {
+        tokenStorage.removeToken();
+        if (typeof window !== "undefined") {
+          window.location.href = "/sign-in";
+        }
+      }
+
+      if (API_DEBUG && typeof window !== "undefined") {
+        const cfg = error.config;
+        const fullUrl = `${cfg?.baseURL ?? ""}${cfg?.url ?? ""}`;
+        console.error("[api:err]", {
+          status: error.response?.status ?? null,
+          url: fullUrl,
+          requestId: error.response?.headers?.["x-request-id"] ?? "",
+          detail: (error.response?.data as { detail?: string } | undefined)?.detail ?? "",
+          message: error.message,
+        });
+      }
+
+      const message =
+        (error.response?.data as { detail?: string } | undefined)?.detail ||
+        "An unexpected error occurred";
+      return Promise.reject(new Error(message));
+    }
+  );
+}
+
+// Base client - no auth, for public endpoints
 export const apiClient = axios.create({
   baseURL: `${API_URL}/api/v1`,
   headers: { "Content-Type": "application/json" },
 });
+
+attachApiDebugInterceptors(apiClient, false);
 
 // -- Token storage ------------------------------------------------------------
 const TOKEN_KEY = "dietpaw_token";
@@ -48,28 +127,7 @@ export function useApiClient() {
     headers: { "Content-Type": "application/json" },
   });
 
-  client.interceptors.request.use((config) => {
-    const token = tokenStorage.getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  });
-
-  client.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      if (error.response?.status === 401) {
-        // Token expired or invalid  clear and redirect to login
-        tokenStorage.removeToken();
-        if (typeof window !== "undefined") {
-          window.location.href = "/sign-in";
-        }
-      }
-      const message = error.response?.data?.detail || "An unexpected error occurred";
-      return Promise.reject(new Error(message));
-    }
-  );
+  attachApiDebugInterceptors(client, true);
 
   return client;
 }

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,8 +44,18 @@ class TokenResponse(BaseModel):
 # -- Endpoints ----------------------------------------------------------------
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def register(
+    body: RegisterRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
     """Create a new account and return an access token."""
+    logger.info(
+        "auth.register.in req_id=%s origin=%s email=%s",
+        getattr(request.state, "request_id", ""),
+        request.headers.get("origin", ""),
+        body.email,
+    )
     if len(body.password) < 8:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -73,8 +83,18 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def login(
+    body: LoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
     """Authenticate with email + password and return an access token."""
+    logger.info(
+        "auth.login.in req_id=%s origin=%s email=%s",
+        getattr(request.state, "request_id", ""),
+        request.headers.get("origin", ""),
+        body.email,
+    )
     user = await user_service.authenticate(db, body.email, body.password)
     if not user:
         raise HTTPException(
