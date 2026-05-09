@@ -14,7 +14,6 @@ from app.middleware.rate_limiter import limiter
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.prediction import PredictionPublic, BreedPrediction
-from app.services.prediction_service import prediction_service
 
 router = APIRouter()
 
@@ -39,6 +38,10 @@ async def analyze_image(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Unsupported file type. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}",
         )
+
+    # Import lazily to keep API startup lightweight when prediction endpoints
+    # are not being used (e.g., auth/sign-up flows).
+    from app.services.prediction_service import prediction_service
 
     from app.config import settings
     image_bytes = await file.read()
@@ -87,6 +90,9 @@ async def list_predictions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> PaginatedResponse:
+    # Import lazily to avoid loading prediction dependencies at app startup.
+    from app.services.prediction_service import prediction_service
+
     predictions, total = await prediction_service.list_by_user(db, current_user.id, page, page_size)
     items = [
         PredictionPublic(
