@@ -6,9 +6,7 @@ Create Date: 2024-01-01 00:00:00.000000
 """
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision = "0003"
 down_revision = "0002"
@@ -17,22 +15,15 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # AI-generated enrichment text stored as JSON (null when AI is disabled/unconfigured)
-    op.add_column(
-        "diet_plans",
-        sa.Column(
-            "ai_insights",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=True,
-        ),
+    # Use IF NOT EXISTS so this is safe to re-run on a partially-applied DB.
+    op.execute(
+        "ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS ai_insights JSONB"
     )
-    # Which provider generated the insights — name only, never the key
-    op.add_column(
-        "diet_plans",
-        sa.Column("ai_provider_used", sa.String(50), nullable=True),
+    op.execute(
+        "ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS ai_provider_used VARCHAR(50)"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("diet_plans", "ai_provider_used")
-    op.drop_column("diet_plans", "ai_insights")
+    op.execute("ALTER TABLE diet_plans DROP COLUMN IF EXISTS ai_provider_used")
+    op.execute("ALTER TABLE diet_plans DROP COLUMN IF EXISTS ai_insights")

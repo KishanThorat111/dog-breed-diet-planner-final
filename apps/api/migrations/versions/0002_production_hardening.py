@@ -11,7 +11,6 @@ Schema changes:
   - audit_logs: add ix_audit_logs_action index (user_id & created_at were already present)
 """
 from alembic import op
-import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -22,65 +21,49 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # --- pets ---
-    op.add_column(
-        "pets",
-        sa.Column("life_stage", sa.String(length=20), nullable=False, server_default="adult"),
-    )
+    # All statements use IF NOT EXISTS / IF EXISTS so this migration is safe
+    # to re-run on a partially-applied database (e.g. after a mid-flight crash).
 
-    # Composite index used by list-my-pets query (user_id WHERE deleted_at IS NULL)
-    op.create_index(
-        "ix_pets_deleted_at",
-        "pets",
-        ["deleted_at"],
+    # --- pets ---
+    op.execute(
+        "ALTER TABLE pets ADD COLUMN IF NOT EXISTS life_stage VARCHAR(20) NOT NULL DEFAULT 'adult'"
     )
-    op.create_index(
-        "ix_pets_user_id_deleted_at",
-        "pets",
-        ["user_id", "deleted_at"],
+    op.execute("CREATE INDEX IF NOT EXISTS ix_pets_deleted_at ON pets (deleted_at)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_pets_user_id_deleted_at ON pets (user_id, deleted_at)"
     )
 
     # --- ai_predictions ---
-    op.create_index(
-        "ix_ai_predictions_created_at",
-        "ai_predictions",
-        ["created_at"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ai_predictions_created_at ON ai_predictions (created_at)"
     )
-    op.create_index(
-        "ix_ai_predictions_user_id_created_at",
-        "ai_predictions",
-        ["user_id", "created_at"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ai_predictions_user_id_created_at"
+        " ON ai_predictions (user_id, created_at)"
     )
 
     # --- diet_plans ---
-    op.create_index(
-        "ix_diet_plans_pet_id_created_at",
-        "diet_plans",
-        ["pet_id", "created_at"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_diet_plans_pet_id_created_at"
+        " ON diet_plans (pet_id, created_at)"
     )
-    op.create_index(
-        "ix_diet_plans_user_id_created_at",
-        "diet_plans",
-        ["user_id", "created_at"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_diet_plans_user_id_created_at"
+        " ON diet_plans (user_id, created_at)"
     )
 
     # --- audit_logs ---
-    op.create_index(
-        "ix_audit_logs_action",
-        "audit_logs",
-        ["action"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action)"
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_audit_logs_action", table_name="audit_logs")
-
-    op.drop_index("ix_diet_plans_user_id_created_at", table_name="diet_plans")
-    op.drop_index("ix_diet_plans_pet_id_created_at", table_name="diet_plans")
-
-    op.drop_index("ix_ai_predictions_user_id_created_at", table_name="ai_predictions")
-    op.drop_index("ix_ai_predictions_created_at", table_name="ai_predictions")
-
-    op.drop_index("ix_pets_user_id_deleted_at", table_name="pets")
-    op.drop_index("ix_pets_deleted_at", table_name="pets")
-    op.drop_column("pets", "life_stage")
+    op.execute("DROP INDEX IF EXISTS ix_audit_logs_action")
+    op.execute("DROP INDEX IF EXISTS ix_diet_plans_user_id_created_at")
+    op.execute("DROP INDEX IF EXISTS ix_diet_plans_pet_id_created_at")
+    op.execute("DROP INDEX IF EXISTS ix_ai_predictions_user_id_created_at")
+    op.execute("DROP INDEX IF EXISTS ix_ai_predictions_created_at")
+    op.execute("DROP INDEX IF EXISTS ix_pets_user_id_deleted_at")
+    op.execute("DROP INDEX IF EXISTS ix_pets_deleted_at")
+    op.execute("ALTER TABLE pets DROP COLUMN IF EXISTS life_stage")
