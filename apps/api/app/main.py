@@ -47,22 +47,8 @@ logger = logging.getLogger(__name__)
 # --- Lifespan ---
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    import asyncio
     logger.info("Starting up...")
-
-    # Load ML model in a background thread so the server starts accepting
-    # requests immediately. /health responds while the model downloads.
-    # Prediction endpoints return 503 until the model is ready.
-    async def _load_model_background() -> None:
-        from app.ml.model_loader import initialize_model
-        loop = asyncio.get_running_loop()
-        try:
-            await loop.run_in_executor(None, initialize_model)
-            logger.info("ML model ready.")
-        except Exception as exc:
-            logger.error("ML model failed to load: %s", exc)
-
-    asyncio.create_task(_load_model_background())
+    logger.info("ML model loading is deferred until first prediction request.")
 
     yield
 
