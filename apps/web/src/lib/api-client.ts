@@ -52,13 +52,7 @@ function attachApiDebugInterceptors(client: AxiosInstance, withAuth: boolean): v
       return response;
     },
     (error: AxiosError) => {
-      if (error.response?.status === 401) {
-        tokenStorage.removeToken();
-        if (typeof window !== "undefined") {
-          window.location.href = "/sign-in";
-        }
-      }
-
+      // Auth disabled for product testing — don't auto-redirect on 401
       if (API_DEBUG && typeof window !== "undefined") {
         const cfg = error.config;
         const fullUrl = `${cfg?.baseURL ?? ""}${cfg?.url ?? ""}`;

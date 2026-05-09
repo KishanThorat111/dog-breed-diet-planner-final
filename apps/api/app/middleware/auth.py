@@ -19,9 +19,14 @@ from app.database import get_db
 logger = logging.getLogger(__name__)
 
 _bearer = HTTPBearer(auto_error=True)
+_bearer_optional = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+
+# Hardcoded anonymous user ID for the no-auth product testing flow.
+# A row with this ID is auto-created on app startup (see main.py lifespan).
+ANONYMOUS_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
 def create_access_token(user_id: uuid.UUID, email: str) -> str:
@@ -76,6 +81,19 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 
     return user
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """Optional auth: returns User if valid token, otherwise None (no error)."""
+    if credentials is None:
+        return None
+    try:
+        return await get_current_user(credentials, db)
+    except HTTPException:
+        return None
 
 
 async def require_admin(current_user=Depends(get_current_user)):

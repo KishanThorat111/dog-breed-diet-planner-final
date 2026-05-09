@@ -51,6 +51,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting up...")
     logger.info("ML model loading is deferred until first prediction request.")
 
+    # Ensure the anonymous user exists for the no-auth product testing flow.
+    try:
+        from app.database import AsyncSessionLocal
+        from app.middleware.auth import ANONYMOUS_USER_ID
+        from app.models.user import User
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.id == ANONYMOUS_USER_ID))
+            if result.scalar_one_or_none() is None:
+                anon = User(
+                    id=ANONYMOUS_USER_ID,
+                    email="anonymous@dietpaw.local",
+                    password_hash="!anonymous!",  # not a real bcrypt hash, never used for login
+                    full_name="Anonymous",
+                    is_active=True,
+                )
+                session.add(anon)
+                await session.commit()
+                logger.info("Created anonymous user row")
+    except Exception as e:
+        logger.error("Failed to ensure anonymous user: %s", e)
+
     yield
 
     # Shutdown

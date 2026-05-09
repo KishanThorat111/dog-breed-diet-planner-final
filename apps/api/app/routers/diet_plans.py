@@ -1,49 +1,95 @@
 from __future__ import annotations
 
-import math
 import uuid
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.middleware.auth import get_current_user
-from app.schemas.common import PaginatedResponse
-from app.schemas.diet_plan import DietPlanGenerateRequest, DietPlanPublic, FoodRecommendation, FeedingScheduleItem
-from app.services.diet_service import diet_service
-from app.services.pet_service import pet_service
+from app.schemas.common import APIBaseModel, PaginatedResponse
+from app.schemas.diet_plan import (
+    DietPlanPublic,
+    FoodRecommendation,
+    FeedingScheduleItem,
+)
+from app.services.diet_engine import diet_engine
+from app.middleware.auth import ANONYMOUS_USER_ID
 
 router = APIRouter()
 
 
+class AnonDietPlanRequest(APIBaseModel):
+    """Anonymous diet-plan request — no pet_id required."""
+    breed: str | None = None
+    age_months: Annotated[int | None, Field(ge=0, le=360)] = None
+    weight_kg: Annotated[Decimal | None, Field(ge=Decimal("0.1"), le=Decimal("200"))] = None
+    activity_level: str | None = None
+    is_neutered: bool = True
+    sex: str = "male"
+    allergies: list[str] = []
+    health_conditions: list[str] = []
+
+
 @router.post("/generate", response_model=DietPlanPublic, status_code=status.HTTP_201_CREATED)
 async def generate_diet_plan(
-    request: DietPlanGenerateRequest,
+    request: AnonDietPlanRequest,
     db: AsyncSession = Depends(get_db),
 ) -> DietPlanPublic:
-    """Generate a personalized diet plan for a pet using the NRC/AAFCO-based engine. (Anonymous)"""
-    # Use the pet_id's owner as the context user, or a temporary UUID if not authenticated
-    current_user_id = request.pet_id  # For anonymous users, just use the pet ID
-    # For now, generate diet plan without pet lookup — just use the specs provided
-    plan = await diet_service.generate_diet_plan_anonymous(
-        db, request
+    """Generate a diet plan in-memory (no persistence) for anonymous testing."""
+    breed = request.breed or "unknown"
+    age_months = request.age_months if request.age_months is not None else 24
+    weight_kg = float(request.weight_kg) if request.weight_kg is not None else 10.0
+    activity_level = request.activity_level or "moderate"
+
+    result = diet_engine.generate(
+        breed=breed,
+        age_months=age_months,
+        weight_kg=weight_kg,
+        activity_level=activity_level,
+        is_neutered=request.is_neutered,
+        sex=request.sex,
+        allergies=request.allergies,
+        health_conditions=request.health_conditions,
     )
-    return _to_public(plan)
+
+    now = datetime.now(timezone.utc)
+    return DietPlanPublic(
+        id=uuid.uuid4(),
+        pet_id=uuid.uuid4(),
+        user_id=ANONYMOUS_USER_ID,
+        prediction_id=None,
+        breed=result.breed,
+        age_months=result.age_months,
+        weight_kg=Decimal(str(result.weight_kg)),
+        activity_level=result.activity_level,
+        daily_calories=result.daily_calories,
+        protein_g=Decimal(str(result.protein_g)),
+        fat_g=Decimal(str(result.fat_g)),
+        carbs_g=Decimal(str(result.carbs_g)),
+        meals_per_day=result.meals_per_day,
+        food_recommendations=[FoodRecommendation(**f) for f in result.food_recommendations],
+        foods_to_avoid=result.foods_to_avoid,
+        supplement_flags=result.supplement_flags,
+        feeding_schedule=[FeedingScheduleItem(**s) for s in result.feeding_schedule],
+        notes=result.notes,
+        engine_version=result.engine_version,
+        ai_insights=None,
+        ai_provider_used=None,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 @router.get("/{plan_id}", response_model=DietPlanPublic)
-async def get_diet_plan(
-    plan_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-) -> DietPlanPublic:
-    # Anonymous access to any diet plan (no auth check)
-    from sqlalchemy import select
-    from app.models.diet_plan import DietPlan
-    result = await db.execute(select(DietPlan).where(DietPlan.id == plan_id))
-    plan = result.scalar_one_or_none()
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diet plan not found")
-    return _to_public(plan)
+async def get_diet_plan(plan_id: uuid.UUID) -> DietPlanPublic:
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Diet plans are not persisted in anonymous mode.",
+    )
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -51,67 +97,5 @@ async def list_diet_plans(
     pet_id: uuid.UUID | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse:
-    # Anonymous listing — just return all plans (or empty)
-    from sqlalchemy import select, func
-    from app.models.diet_plan import DietPlan
-    
-    query = select(DietPlan)
-    if pet_id:
-        query = query.where(DietPlan.pet_id == pet_id)
-    
-    # Count total
-    count_stmt = select(func.count()).select_from(DietPlan)
-    if pet_id:
-        count_stmt = count_stmt.where(DietPlan.pet_id == pet_id)
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar()
-    
-    # Paginate
-    offset = (page - 1) * page_size
-    query = query.offset(offset).limit(page_size)
-    result = await db.execute(query)
-    plans = result.scalars().all()
-    
-    return PaginatedResponse(
-        items=[_to_public(p) for p in plans],
-        total=total,
-        page=page,
-        page_size=page_size,
-    else:
-        plans, total = await diet_service.list_by_user(db, current_user.id, page, page_size)
-
-    return PaginatedResponse(
-        items=[_to_public(p) for p in plans],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=math.ceil(total / page_size) if total else 0,
-    )
-
-
-def _to_public(plan) -> DietPlanPublic:  # type: ignore[no-untyped-def]
-    return DietPlanPublic(
-        id=plan.id,
-        pet_id=plan.pet_id,
-        user_id=plan.user_id,
-        prediction_id=plan.prediction_id,
-        breed=plan.breed,
-        age_months=plan.age_months,
-        weight_kg=plan.weight_kg,
-        activity_level=plan.activity_level,
-        daily_calories=plan.daily_calories,
-        protein_g=plan.protein_g,
-        fat_g=plan.fat_g,
-        carbs_g=plan.carbs_g,
-        meals_per_day=plan.meals_per_day,
-        food_recommendations=[FoodRecommendation(**f) for f in plan.food_recommendations],
-        foods_to_avoid=plan.foods_to_avoid,
-        supplement_flags=plan.supplement_flags,
-        feeding_schedule=[FeedingScheduleItem(**s) for s in plan.feeding_schedule],
-        notes=plan.notes,
-        engine_version=plan.engine_version,
-        created_at=plan.created_at,
-        updated_at=plan.updated_at,
-    )
+    return PaginatedResponse(items=[], total=0, page=page, page_size=page_size, pages=0)

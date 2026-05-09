@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_optional_user, ANONYMOUS_USER_ID
 from app.middleware.rate_limiter import limiter
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
@@ -27,15 +27,13 @@ async def analyze_image(
     file: UploadFile = File(..., description="Dog image (JPEG, PNG, or WEBP, max 10MB)"),
     pet_id: uuid.UUID | None = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ) -> PredictionPublic:
     """
     Upload a dog image and receive AI breed identification.
-    Auth is optional — anonymous users get a temporary session user_id.
-    Rate limited to 10 requests/minute per IP.
+    Auth is optional — anonymous users use the shared ANONYMOUS_USER_ID.
     """
-    # If no auth, use a temporary anonymous user ID (consistent per session)
-    user_id = current_user.id if current_user else uuid.uuid4()
+    user_id = current_user.id if current_user else ANONYMOUS_USER_ID
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -91,8 +89,12 @@ async def list_predictions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
 ) -> PaginatedResponse:
+    # Anonymous users have no listing — only return data for authenticated users.
+    if current_user is None:
+        return PaginatedResponse(items=[], total=0, page=page, page_size=page_size, pages=0)
+
     # Import lazily to avoid loading prediction dependencies at app startup.
     from app.services.prediction_service import prediction_service
 
