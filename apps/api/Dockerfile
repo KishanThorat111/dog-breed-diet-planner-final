@@ -30,6 +30,17 @@ RUN uv pip install --system --no-cache \
 # Copy application code
 COPY . .
 
+# Fail build early if any Python source file is not valid UTF-8.
+# This prevents runtime crashes like UnicodeDecodeError during imports.
+RUN python -c "\
+import pathlib; \
+bad=[]; \
+for p in pathlib.Path('.').rglob('*.py'): \
+    try: p.read_bytes().decode('utf-8'); \
+    except UnicodeDecodeError as e: bad.append((str(p), str(e))); \
+assert not bad, 'Invalid UTF-8 in Python files: ' + '; '.join([f'{p} ({e})' for p,e in bad]); \
+print('UTF-8 validation passed for all Python files.')"
+
 # Create models directory (weights can be mounted at runtime or baked in)
 RUN mkdir -p models
 
