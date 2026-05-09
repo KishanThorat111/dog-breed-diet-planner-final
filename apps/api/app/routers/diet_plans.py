@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.diet_plan import DietPlanGenerateRequest, DietPlanPublic, FoodRecommendation, FeedingScheduleItem
 from app.services.diet_service import diet_service
@@ -21,14 +20,14 @@ router = APIRouter()
 async def generate_diet_plan(
     request: DietPlanGenerateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> DietPlanPublic:
-    """Generate a personalized diet plan for a pet using the NRC/AAFCO-based engine."""
-    pet = await pet_service.get_by_id(db, request.pet_id, current_user.id)
-    if not pet:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found")
-
-    plan = await diet_service.generate_for_pet(db, current_user.id, request, pet)
+    """Generate a personalized diet plan for a pet using the NRC/AAFCO-based engine. (Anonymous)"""
+    # Use the pet_id's owner as the context user, or a temporary UUID if not authenticated
+    current_user_id = request.pet_id  # For anonymous users, just use the pet ID
+    # For now, generate diet plan without pet lookup — just use the specs provided
+    plan = await diet_service.generate_diet_plan_anonymous(
+        db, request
+    )
     return _to_public(plan)
 
 
@@ -36,9 +35,12 @@ async def generate_diet_plan(
 async def get_diet_plan(
     plan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> DietPlanPublic:
-    plan = await diet_service.get_by_id(db, plan_id, current_user.id)
+    # Anonymous access to any diet plan (no auth check)
+    from sqlalchemy import select
+    from app.models.diet_plan import DietPlan
+    result = await db.execute(select(DietPlan).where(DietPlan.id == plan_id))
+    plan = result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diet plan not found")
     return _to_public(plan)
@@ -46,18 +48,37 @@ async def get_diet_plan(
 
 @router.get("", response_model=PaginatedResponse)
 async def list_diet_plans(
-    pet_id: uuid.UUID | None = Query(None),  # optional — if absent, list all plans for user
+    pet_id: uuid.UUID | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> PaginatedResponse:
-    if pet_id is not None:
-        # Validate pet belongs to user
-        pet = await pet_service.get_by_id(db, pet_id, current_user.id)
-        if not pet:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found")
-        plans, total = await diet_service.list_by_pet(db, pet_id, current_user.id, page, page_size)
+    # Anonymous listing — just return all plans (or empty)
+    from sqlalchemy import select, func
+    from app.models.diet_plan import DietPlan
+    
+    query = select(DietPlan)
+    if pet_id:
+        query = query.where(DietPlan.pet_id == pet_id)
+    
+    # Count total
+    count_stmt = select(func.count()).select_from(DietPlan)
+    if pet_id:
+        count_stmt = count_stmt.where(DietPlan.pet_id == pet_id)
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar()
+    
+    # Paginate
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+    result = await db.execute(query)
+    plans = result.scalars().all()
+    
+    return PaginatedResponse(
+        items=[_to_public(p) for p in plans],
+        total=total,
+        page=page,
+        page_size=page_size,
     else:
         plans, total = await diet_service.list_by_user(db, current_user.id, page, page_size)
 

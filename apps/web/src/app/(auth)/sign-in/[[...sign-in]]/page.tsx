@@ -1,48 +1,18 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { loginUser } from "@/lib/api-client";
-import { Dog } from "lucide-react";
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function SignInPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    // Auth temporarily disabled — redirect to product analyzer
+    router.push('/dashboard/analyze');
+  }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await loginUser(email, password);
-      toast.success("Welcome back!");
-      router.push("/dashboard");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Login failed";
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background to-muted/30 px-4">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary mb-4">
-            <Dog className="h-6 w-6 text-primary-foreground" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Sign in to your DietPaw account</p>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-border bg-card shadow-lg p-8 space-y-5"
-        >
+  return <div></div>; // Placeholder while redirecting
+}
           <div className="space-y-1.5">
             <label htmlFor="email" className="block text-sm font-medium text-foreground">
               Email

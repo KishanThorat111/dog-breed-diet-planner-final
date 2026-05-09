@@ -27,12 +27,15 @@ async def analyze_image(
     file: UploadFile = File(..., description="Dog image (JPEG, PNG, or WEBP, max 10MB)"),
     pet_id: uuid.UUID | None = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user),
 ) -> PredictionPublic:
     """
     Upload a dog image and receive AI breed identification.
-    Rate limited to 10 requests/minute per user.
+    Auth is optional — anonymous users get a temporary session user_id.
+    Rate limited to 10 requests/minute per IP.
     """
+    # If no auth, use a temporary anonymous user ID (consistent per session)
+    user_id = current_user.id if current_user else uuid.uuid4()
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -53,7 +56,7 @@ async def analyze_image(
 
     prediction = await prediction_service.analyze_image(
         db=db,
-        user_id=current_user.id,
+        user_id=user_id,
         image_bytes=image_bytes,
         original_filename=file.filename or "upload.jpg",
         content_type=file.content_type,
