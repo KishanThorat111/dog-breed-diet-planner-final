@@ -82,7 +82,19 @@ class StorageService:
         self._client = None
         self._lock = threading.Lock()  # Thread-safe lazy init
 
+    def _is_configured(self) -> bool:
+        return all(
+            [
+                settings.cloudflare_r2_endpoint_url,
+                settings.cloudflare_r2_access_key_id,
+                settings.cloudflare_r2_secret_access_key,
+                settings.cloudflare_r2_bucket_name,
+            ]
+        )
+
     def _get_client(self):  # type: ignore[no-untyped-def]
+        if not self._is_configured():
+            raise RuntimeError("Cloudflare R2 is not configured")
         if self._client is None:
             with self._lock:
                 if self._client is None:  # Double-checked locking
@@ -116,9 +128,8 @@ class StorageService:
         ext = "jpg" if content_type == "image/jpeg" else safe_image_extension(original_filename)
         key = f"uploads/{user_id}/{uuid.uuid4()}.{ext}"
 
-        if settings.is_development and not settings.cloudflare_r2_endpoint_url:
-            logger.warning("R2 not configured. Skipping upload, returning mock key: %s", key)
-            return key
+        if not self._is_configured():
+            raise RuntimeError("Cloudflare R2 is not configured")
 
         self._get_client().put_object(
             Bucket=settings.cloudflare_r2_bucket_name,
@@ -135,6 +146,9 @@ class StorageService:
         if settings.cloudflare_r2_public_url:
             # If bucket is public, construct URL directly (no signing overhead)
             return f"{settings.cloudflare_r2_public_url.rstrip('/')}/{r2_key}"
+
+        if not self._is_configured():
+            raise RuntimeError("Cloudflare R2 is not configured")
 
         return self._get_client().generate_presigned_url(
             "get_object",

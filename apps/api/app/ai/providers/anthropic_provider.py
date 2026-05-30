@@ -33,7 +33,7 @@ class AnthropicProvider(BaseAIProvider):
     def is_configured(self) -> bool:
         try:
             from app.config import settings
-            return bool(settings.anthropic_api_key)
+            return bool(getattr(settings, "anthropic_api_key", ""))
         except Exception:
             return False
 
@@ -46,7 +46,7 @@ class AnthropicProvider(BaseAIProvider):
                     "anthropic is not installed. Run: pip install anthropic"
                 )
             from app.config import settings
-            self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+            self._client = AsyncAnthropic(api_key=getattr(settings, "anthropic_api_key", ""))
         return self._client
 
     async def complete(self, request: AIRequest) -> AIResponse:

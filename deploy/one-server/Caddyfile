@@ -1,0 +1,30 @@
+{
+  admin off
+  email admin@dogbreeddetector.online
+}
+
+dogbreeddetector.online, www.dogbreeddetector.online {
+  encode gzip zstd
+
+  @www host www.dogbreeddetector.online
+  redir @www https://dogbreeddetector.online{uri} permanent
+
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+  }
+
+  # Route backend paths to FastAPI.
+  @api path /api /api/* /health /ready /docs /openapi.json /redoc
+  handle @api {
+    reverse_proxy api:8000
+  }
+
+  # Everything else goes to Next.js frontend.
+  handle {
+    reverse_proxy web:3000
+  }
+}

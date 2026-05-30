@@ -1,13 +1,13 @@
 """
 Tests for the /api/v1/predictions (analyze) endpoint.
-Mocks ML inference and R2 storage to keep tests fast and dependency-free.
+Mocks Gemini inference and R2 storage to keep tests fast and dependency-free.
 """
 from __future__ import annotations
 
 import io
 import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -33,16 +33,27 @@ class TestAnalyzeEndpoint:
     @pytest.mark.asyncio
     async def test_analyze_returns_prediction(self, client: AsyncClient) -> None:
         """Successful upload returns a prediction with top_breed and confidence."""
-        mock_result = MagicMock()
-        mock_result.top_breed = "golden_retriever"
-        mock_result.top_display_name = "Golden Retriever"
-        mock_result.top_confidence = 0.95
-        mock_result.all_predictions = [{"breed": "golden_retriever", "confidence": 0.95}]
-        mock_result.model_version = "efficientnet_b4_v1"
-        mock_result.inference_time_ms = 120
+        gemini_result = {
+            "top_breed": "golden_retriever",
+            "top_display_name": "Golden Retriever",
+            "top_confidence": 0.95,
+            "all_predictions": [
+                {
+                    "breed": "golden_retriever",
+                    "display_name": "Golden Retriever",
+                    "confidence": 0.95,
+                    "size": "large",
+                }
+            ],
+            "provider": "gemini-vision",
+        }
 
         with (
-            patch("app.services.prediction_service.run_inference", return_value=mock_result),
+            patch(
+                "app.services.vision_service.classify_breed_with_gemini",
+                new_callable=AsyncMock,
+                return_value=gemini_result,
+            ),
             patch(
                 "app.services.storage_service.StorageService.upload_image",
                 return_value="uploads/test/abc.jpg",
@@ -85,13 +96,13 @@ class TestAnalyzeEndpoint:
 
     @pytest.mark.asyncio
     async def test_analyze_cache_hit_skips_inference(self, client: AsyncClient) -> None:
-        """When Redis cache has a hit, ML inference should not run."""
+        """When cache has a hit, Gemini inference should not run."""
         cached = {
             "top_breed": "labrador_retriever",
             "top_confidence": 0.88,
             "top_display_name": "Labrador Retriever",
             "all_predictions": [{"breed": "labrador_retriever", "confidence": 0.88}],
-            "model_version": "efficientnet_b4_v1",
+            "model_version": "gemini-vision",
             "inference_time_ms": 0,
         }
 
@@ -106,14 +117,17 @@ class TestAnalyzeEndpoint:
                 return_value="https://r2.example.com/uploads/test/abc.jpg",
             ),
             patch("app.utils.validators.validate_image_bytes"),
-            patch("app.services.prediction_service.run_inference") as mock_infer,
+            patch(
+                "app.services.vision_service.classify_breed_with_gemini",
+                new_callable=AsyncMock,
+            ) as mock_gemini,
         ):
             response = await client.post(
                 "/api/v1/predictions/analyze",
                 files={"file": ("test.jpg", io.BytesIO(_TINY_JPEG), "image/jpeg")},
             )
             # Inference must not be called when cache hits
-            mock_infer.assert_not_called()
+            mock_gemini.assert_not_called()
 
         if response.status_code not in (200, 201):
             pytest.skip("Cache-hit path needs real DB for prediction record creation")

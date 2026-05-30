@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.middleware.rate_limiter import limiter
@@ -49,7 +48,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting up...")
-    logger.info("ML model loading is deferred until first prediction request.")
+    logger.info("Gemini-only AI mode enabled for lightweight VM deployment.")
 
     # Ensure the anonymous user exists for the no-auth product testing flow.
     try:
@@ -77,8 +76,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down...")
-    from app.services.prediction_service import _inference_executor
-    _inference_executor.shutdown(wait=False)
     logger.info("Shutdown complete.")
 
 
@@ -99,83 +96,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 
 # --- CORS ---
 # allow_origins covers explicit production/dev origins from env var.
-# allow_origin_regex covers all Vercel preview URLs (unique deploy URLs,
-# git-branch URLs) so sign-up/sign-in work from any Vercel deployment URL.
-_VERCEL_PREVIEW_RE = r"https://dog-breed-diet-planner-final[^.]*\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
-    allow_origin_regex=_VERCEL_PREVIEW_RE,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     expose_headers=["X-Request-ID", "X-Response-Time-Ms"],
 )
-
-
-class CORSTraceMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
-        path = request.url.path
-        origin = request.headers.get("origin", "")
-        acr_method = request.headers.get("access-control-request-method", "")
-        acr_headers = request.headers.get("access-control-request-headers", "")
-
-        should_trace = request.method == "OPTIONS" or path.startswith("/api/v1/auth")
-        if should_trace:
-            logger.info(
-                "cors.trace.in method=%s path=%s origin=%s acr_method=%s acr_headers=%s",
-                request.method,
-                path,
-                origin,
-                acr_method,
-                acr_headers,
-            )
-
-        try:
-            response = await call_next(request)
-        except Exception as exc:
-            logger.error(
-                "cors.trace.error method=%s path=%s origin=%s error=%s",
-                request.method,
-                path,
-                origin,
-                exc,
-                exc_info=True,
-            )
-            # Do NOT re-raise. Re-raising would bypass CORSMiddleware (which is
-            # inside this middleware in the stack), so the error response would
-            # have no Access-Control-Allow-Origin header and the browser would
-            # report a CORS error instead of the real 500.
-            # Instead, return a JSONResponse and add CORS headers manually.
-            from fastapi.responses import JSONResponse as _JSONResponse
-            _err = _JSONResponse(
-                status_code=500,
-                content={"detail": "Internal server error"},
-            )
-            if origin:
-                _err.headers["Access-Control-Allow-Origin"] = origin
-                _err.headers["Access-Control-Allow-Credentials"] = "true"
-                _err.headers["Vary"] = "Origin"
-            return _err
-
-        if should_trace:
-            logger.info(
-                "cors.trace.out method=%s path=%s status=%s acao=%s acam=%s acah=%s req_id=%s",
-                request.method,
-                path,
-                response.status_code,
-                response.headers.get("access-control-allow-origin", ""),
-                response.headers.get("access-control-allow-methods", ""),
-                response.headers.get("access-control-allow-headers", ""),
-                response.headers.get("x-request-id", ""),
-            )
-
-        return response
-
-
-# Add this AFTER CORS so we can log final CORS headers on responses.
-app.add_middleware(CORSTraceMiddleware)
 
 
 # --- Request ID + timing ---
@@ -239,12 +168,14 @@ app.include_router(admin.router,       prefix=f"{API_V1}/admin",       tags=["ad
 # --- Health ---
 @app.get("/health", tags=["health"])
 async def health_check() -> dict:
-    from app.ml.model_loader import get_classifier_status
+    ai_enabled = settings.ai_enabled.lower() not in ("false", "0", "no")
     return {
         "status": "ok",
         "environment": settings.environment,
         "version": "1.0.0",
-        "ml_model": get_classifier_status(),
+        "ai_provider": settings.ai_active_provider,
+        "ai_enabled": ai_enabled,
+        "gemini_configured": bool(settings.gemini_api_key),
     }
 
 

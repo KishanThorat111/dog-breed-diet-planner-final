@@ -5,8 +5,6 @@ Uses Gemini Vision (gemini-1.5-flash) to identify dog breeds from images
 with high accuracy. The model is NOT restricted to a fixed list — it is
 free to name any breed it sees, and we map the result to our taxonomy
 with fuzzy matching.
-
-Falls back to the local EfficientNet ML model when no API key is configured.
 """
 from __future__ import annotations
 
@@ -170,8 +168,7 @@ async def classify_breed_with_gemini(
 
     if not settings.gemini_api_key:
         logger.warning(
-            "GEMINI_API_KEY is empty — Gemini Vision disabled. "
-            "Set it in Railway Variables for accurate breed detection."
+            "GEMINI_API_KEY is empty — Gemini Vision disabled."
         )
         return None
 
@@ -195,8 +192,7 @@ async def classify_breed_with_gemini(
         },
     }
 
-    # gemini-2.5-flash is the current recommended model (Tier 1 Postpay)
-    # Falls back to gemini-2.0-flash if 2.5 preview is unavailable
+    # Try primary model first, then a compatible fallback model.
     _MODELS = [
         "gemini-2.5-flash",
         "gemini-2.0-flash",
@@ -253,7 +249,7 @@ async def classify_breed_with_gemini(
             logger.error("Gemini REST call failed (%s): %s\n%s", model_name, exc, traceback.format_exc())
             return None
     else:
-        # All models exhausted (all returned 429)
+        # All models exhausted.
         logger.error("All Gemini models rate-limited. Last error: %s", last_error)
         return None
 
@@ -267,8 +263,7 @@ async def classify_breed_with_gemini(
 
     if not data.get("is_dog", True):
         logger.info("Gemini: image does not appear to contain a dog.")
-        # Return special sentinel dict so caller knows Gemini explicitly
-        # rejected this image — do NOT fall back to EfficientNet.
+        # Return special sentinel dict so caller can return a clear 422.
         return {"no_dog_detected": True}
 
     top_key = data.get("top_breed_key", "")

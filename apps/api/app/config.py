@@ -28,9 +28,6 @@ class Settings(BaseSettings):
     cloudflare_r2_endpoint_url: str = ""
     cloudflare_r2_public_url: str = ""
 
-    # ML
-    ml_model_path: str = ""
-
     # CORS — comma-separated list
     allowed_origins: str = "http://localhost:3000"
 
@@ -47,13 +44,8 @@ class Settings(BaseSettings):
     # Google Gemini (free tier: 15 RPM, 1M tokens/day on gemini-1.5-flash)
     gemini_api_key: str = ""
 
-    # Optional: OpenAI and Anthropic (paid)
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
-
-    # Active provider: gemini | openai | anthropic
+    # Active provider for this deployment profile (Gemini only)
     ai_active_provider: str = "gemini"
-    ai_fallback_providers: str = ""
     ai_enabled: str = "true"
 
     @property

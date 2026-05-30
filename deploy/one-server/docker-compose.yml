@@ -4,7 +4,7 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file:
-      - ./deploy/one-server/.env.postgres
+      - .env.postgres
     expose:
       - "5432"
     volumes:
@@ -50,10 +50,10 @@ services:
 
   api:
     build:
-      context: ./apps/api
+      context: ../../apps/api
       dockerfile: Dockerfile
     env_file:
-      - ./deploy/one-server/.env.api
+      - .env.api
     expose:
       - "8000"
     depends_on:
@@ -84,10 +84,10 @@ services:
 
   web:
     build:
-      context: ./apps/web
+      context: ../../apps/web
       dockerfile: Dockerfile
     env_file:
-      - ./deploy/one-server/.env.web
+      - .env.web
     expose:
       - "3000"
     depends_on:
@@ -120,7 +120,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/one-server/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

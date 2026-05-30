@@ -3,13 +3,13 @@ Runtime AI configuration.
 
 Loaded from environment variables at process startup.
 Can be updated at runtime via admin API (resets on process restart).
-For permanent changes in production, update the Railway environment variable.
+For permanent changes in production, update environment variables.
 """
 from __future__ import annotations
 
 import os
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -25,9 +25,6 @@ class AIConfig:
     # Specific model; None = provider default (cheapest/fastest)
     active_model: str | None = None
 
-    # Ordered fallback list tried when the primary provider fails
-    fallback_providers: list[str] = field(default_factory=list)
-
     # Generation parameters
     temperature: float = 0.3
     max_tokens: int = 512
@@ -41,7 +38,6 @@ class AIConfig:
         return {
             "active_provider": self.active_provider,
             "active_model": self.active_model,
-            "fallback_providers": self.fallback_providers,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "timeout_seconds": self.timeout_seconds,
@@ -59,13 +55,9 @@ _UPDATABLE_FIELDS = frozenset(AIConfig.__dataclass_fields__)  # type: ignore[att
 
 def _load_from_env() -> None:
     """Seed initial runtime config from environment variables."""
-    raw_fallback = os.environ.get("AI_FALLBACK_PROVIDERS", "")
-    fallbacks = [p.strip() for p in raw_fallback.split(",") if p.strip()]
-
     with _lock:
         _config.active_provider = os.environ.get("AI_ACTIVE_PROVIDER", "gemini").lower()
         _config.active_model = os.environ.get("AI_ACTIVE_MODEL") or None
-        _config.fallback_providers = fallbacks
         _config.enabled = os.environ.get("AI_ENABLED", "true").lower() not in ("false", "0", "no")
 
 

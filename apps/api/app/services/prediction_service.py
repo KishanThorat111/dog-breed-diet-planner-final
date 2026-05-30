@@ -4,7 +4,6 @@ import asyncio
 import hashlib
 import logging
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from sqlalchemy import select
@@ -13,17 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.prediction import AIPrediction
 from app.models.upload import Upload
-from app.ml.pipeline import InferencePipelineResult, run_inference
+from app.ml.pipeline import InferencePipelineResult
 from app.services.storage_service import storage_service
 from app.utils.cache import cache
 from app.utils.validators import validate_image_bytes
 
 logger = logging.getLogger(__name__)
-
-# Single-worker thread pool for CPU-bound ML inference.
-# max_workers=1: PyTorch allocates per-thread buffers (~200MB each);
-# a second worker would push memory over Railway's 512MB container limit.
-_inference_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ml_inference")
 
 _CACHE_TTL = 3600  # 1 hour
 
@@ -44,7 +38,7 @@ class PredictionService:
         # 2. Hash for cache key and deduplication
         image_hash = hashlib.sha256(image_bytes).hexdigest()
 
-        # 3. Check Redis cache — return DB record directly if already analysed
+        # 3. Check in-process cache — return DB record directly if already analysed
         cached_result: dict[str, Any] | None = await self._get_cached_result(image_hash)
         if cached_result is not None:
             logger.info("Cache hit for image hash %s", image_hash[:12])
@@ -56,8 +50,7 @@ class PredictionService:
 
         loop = asyncio.get_running_loop()
 
-        # 4. Try Gemini Vision first (highest accuracy).
-        #    Falls back to local EfficientNet model if Gemini is unavailable.
+        # 4. Gemini Vision only (no local model fallback on e2-micro).
         from app.services.vision_service import classify_breed_with_gemini
         from fastapi import HTTPException
 
@@ -69,26 +62,30 @@ class PredictionService:
                 detail="No dog detected in this image. Please upload a clear photo of a dog.",
             )
 
-        if ai_vision is not None:
-            # Build a synthetic InferencePipelineResult from Gemini's response
-            result = InferencePipelineResult(
-                top_breed=ai_vision["top_breed"],
-                top_confidence=ai_vision["top_confidence"],
-                top_display_name=ai_vision["top_display_name"],
-                all_predictions=ai_vision["all_predictions"],
-                model_version=f"gemini-vision-2.5-flash",
-                inference_time_ms=0,
-                image_hash=image_hash,
+        if ai_vision is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Gemini AI service is unavailable. "
+                    "Please retry in a few moments."
+                ),
             )
-            logger.info(
-                "Gemini Vision classified breed=%s confidence=%.2f",
-                result.top_breed, result.top_confidence,
-            )
-        else:
-            # Fallback: local EfficientNet model
-            result = await loop.run_in_executor(
-                _inference_executor, run_inference, image_bytes
-            )
+
+        # Build a normalized InferencePipelineResult from Gemini's response
+        result = InferencePipelineResult(
+            top_breed=ai_vision["top_breed"],
+            top_confidence=ai_vision["top_confidence"],
+            top_display_name=ai_vision["top_display_name"],
+            all_predictions=ai_vision["all_predictions"],
+            model_version=f"{ai_vision.get('provider', 'gemini')}",
+            inference_time_ms=0,
+            image_hash=image_hash,
+        )
+        logger.info(
+            "Gemini Vision classified breed=%s confidence=%.2f",
+            result.top_breed,
+            result.top_confidence,
+        )
 
         # 5. Upload to R2 — non-fatal if R2 is not configured
         r2_key: str | None = None
@@ -154,7 +151,7 @@ class PredictionService:
             return None
 
     async def _cache_result(self, image_hash: str, result: InferencePipelineResult) -> None:
-        """Persist inference result to Redis (best-effort)."""
+        """Persist inference result to in-process cache (best-effort)."""
         try:
             await cache.set(
                 f"prediction:{image_hash}",
@@ -184,28 +181,34 @@ class PredictionService:
     ) -> AIPrediction:
         """Create a new DB prediction record using cached inference data (no R2 upload, no re-inference)."""
         loop = asyncio.get_running_loop()
-        r2_key = await loop.run_in_executor(
-            None,
-            lambda: storage_service.upload_image(
-                image_bytes, str(user_id), original_filename, content_type
-            ),
-        )
-        upload = Upload(
-            user_id=user_id,
-            r2_key=r2_key,
-            r2_bucket=settings.cloudflare_r2_bucket_name,
-            original_filename=original_filename[:255],
-            content_type=content_type,
-            size_bytes=len(image_bytes),
-            sha256_hash=image_hash,
-        )
-        db.add(upload)
-        await db.flush()
+        r2_key: str | None = None
+        upload_id: uuid.UUID | None = None
+        try:
+            r2_key = await loop.run_in_executor(
+                None,
+                lambda: storage_service.upload_image(
+                    image_bytes, str(user_id), original_filename, content_type
+                ),
+            )
+            upload = Upload(
+                user_id=user_id,
+                r2_key=r2_key,
+                r2_bucket=settings.cloudflare_r2_bucket_name,
+                original_filename=original_filename[:255],
+                content_type=content_type,
+                size_bytes=len(image_bytes),
+                sha256_hash=image_hash,
+            )
+            db.add(upload)
+            await db.flush()
+            upload_id = upload.id
+        except Exception as r2_err:
+            logger.warning("R2 upload skipped (non-fatal): %s", r2_err)
 
         prediction = AIPrediction(
             user_id=user_id,
             pet_id=pet_id,
-            upload_id=upload.id,
+            upload_id=upload_id,
             top_breed=cached["top_breed"],
             top_confidence=cached["top_confidence"],
             all_predictions=cached["all_predictions"],
@@ -215,7 +218,9 @@ class PredictionService:
         db.add(prediction)
         await db.commit()
         await db.refresh(prediction)
-        prediction.__dict__["_image_url"] = storage_service.get_presigned_url(r2_key)
+        prediction.__dict__["_image_url"] = (
+            storage_service.get_presigned_url(r2_key) if r2_key else None
+        )
         prediction.__dict__["_cached"] = True
         return prediction
 

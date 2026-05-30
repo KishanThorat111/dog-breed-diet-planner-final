@@ -2,7 +2,14 @@
 
 An AI-powered SaaS that identifies your dog's breed from a photo and generates a personalized diet plan based on NRC/AAFCO nutritional guidelines.
 
-**Tech Stack**: FastAPI · Next.js 14 · PostgreSQL (Supabase) · Cloudflare R2 · Gemini API · Railway · Vercel
+## Recommended Deployment Profile (Single VM Production)
+
+For production deployment on one GCP VM:
+1. [docs/ONE_SERVER_VM_WORKFLOW.md](docs/ONE_SERVER_VM_WORKFLOW.md)
+2. [deploy/one-server/docker-compose.yml](deploy/one-server/docker-compose.yml)
+3. [deploy/one-server/Caddyfile](deploy/one-server/Caddyfile)
+
+**Deployment Stack**: FastAPI · Next.js · PostgreSQL (container) · Caddy · Docker Compose · Gemini API
 
 ---
 

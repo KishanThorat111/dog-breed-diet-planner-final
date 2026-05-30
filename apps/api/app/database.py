@@ -7,19 +7,21 @@ from sqlalchemy.pool import NullPool, AsyncAdaptedQueuePool
 
 from app.config import settings
 
-# Supabase Supavisor (transaction pooler, port 6543) handles connection pooling
-# externally, so we use NullPool to avoid double-pooling.
-# For non-Supabase setups: use AsyncAdaptedQueuePool with pool_size=5.
-_pool_kwargs: dict = (
-    {"poolclass": NullPool}
-    if settings.is_production
-    else {
+# Use NullPool only for Supabase transaction pooler URLs.
+# For local or self-managed Postgres, keep a small SQLAlchemy queue pool.
+_db_url = settings.database_url.lower()
+_is_supabase_pooler = "pooler.supabase.com" in _db_url
+
+if _is_supabase_pooler:
+    _pool_kwargs: dict = {"poolclass": NullPool}
+else:
+    _pool_kwargs = {
+        "poolclass": AsyncAdaptedQueuePool,
         "pool_size": 5,
-        "max_overflow": 10,
+        "max_overflow": 5,
         "pool_pre_ping": True,
         "pool_recycle": 1800,
     }
-)
 
 engine = create_async_engine(
     settings.database_url,

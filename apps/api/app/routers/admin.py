@@ -77,7 +77,6 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
 class AIConfigUpdate(BaseModel):
     active_provider: str | None = None
     active_model: str | None = None
-    fallback_providers: list[str] | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     timeout_seconds: int | None = None
@@ -131,14 +130,6 @@ async def update_ai_config(body: AIConfigUpdate) -> dict:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown provider '{updates['active_provider']}'. "
                        f"Available: {available}",
-            )
-    if "fallback_providers" in updates:
-        available = AIProviderFactory.available_providers()
-        unknown = [p for p in updates["fallback_providers"] if p not in available]
-        if unknown:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Unknown fallback providers: {unknown}",
             )
 
     updated = _update(**updates)
@@ -229,52 +220,3 @@ async def test_ai_provider(body: AITestRequest) -> dict:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Provider test failed: {exc}",
         )
-
-
-
-@router.get("/users", response_model=PaginatedResponse)
-async def list_users(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-) -> PaginatedResponse:
-    users, total = await user_service.list_users(db, page, page_size)
-    return PaginatedResponse(
-        items=[UserPublic.model_validate(u) for u in users],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=math.ceil(total / page_size) if total else 0,
-    )
-
-
-@router.get("/stats")
-async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
-    """High-level platform statistics for admin dashboard."""
-    from sqlalchemy import func, select
-    from app.models.pet import Pet
-    from app.models.prediction import AIPrediction
-    from app.models.diet_plan import DietPlan
-
-    user_count = (await db.execute(
-        select(func.count()).select_from(User).where(User.deleted_at.is_(None))
-    )).scalar_one()
-
-    pet_count = (await db.execute(
-        select(func.count()).select_from(Pet).where(Pet.deleted_at.is_(None))
-    )).scalar_one()
-
-    prediction_count = (await db.execute(
-        select(func.count()).select_from(AIPrediction)
-    )).scalar_one()
-
-    diet_plan_count = (await db.execute(
-        select(func.count()).select_from(DietPlan)
-    )).scalar_one()
-
-    return {
-        "users": user_count,
-        "pets": pet_count,
-        "predictions": prediction_count,
-        "diet_plans": diet_plan_count,
-    }

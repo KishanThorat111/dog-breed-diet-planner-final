@@ -40,7 +40,7 @@ def get_classifier() -> "BreedClassifier":
         if _classifier is None:
             from app.ml.breed_classifier import BreedClassifier
             _classifier = BreedClassifier(
-                model_path=settings.ml_model_path or None,
+                model_path=getattr(settings, "ml_model_path", "") or None,
                 device="cpu",
             )
 

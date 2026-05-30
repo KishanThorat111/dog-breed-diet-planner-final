@@ -8,7 +8,7 @@ nutritional numbers — the AI only adds explanatory text.
 Design:
   - AI enrichment is OPTIONAL: if no provider is configured or AI is disabled,
     the plan is returned unchanged with ai_insights=None.
-  - Results are cached in Redis by a hash of the input parameters so the same
+    - Results are cached in-memory by a hash of the input parameters so the same
     breed+age+weight+activity never calls the LLM twice.
   - Input is sanitized to prevent prompt injection from user-controlled fields.
 """
@@ -144,7 +144,7 @@ async def enrich_diet_plan(
       - No provider is configured
       - The LLM call fails (all exceptions are swallowed — AI is non-critical)
 
-    Result is cached in Redis to avoid duplicate LLM calls.
+    Result is cached in-memory to avoid duplicate LLM calls.
     """
     cfg = get_ai_config()
     if not cfg.enabled:
@@ -155,7 +155,7 @@ async def enrich_diet_plan(
         logger.debug("AI enrichment skipped — no provider configured")
         return None
 
-    # Check Redis cache first
+    # Check cache first
     from app.utils.cache import cache
 
     key = _cache_key(breed, age_months, weight_kg, activity_level, is_neutered, supplement_flags)
