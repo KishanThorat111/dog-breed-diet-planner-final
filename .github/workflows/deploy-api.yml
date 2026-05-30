@@ -40,11 +40,11 @@ jobs:
           script: |
             set -euo pipefail
 
-            APP_DIR="/opt/dog-breed-identifier"
+            APP_DIR="$HOME/dog-breed-identifier"
             REPO_URL="https://github.com/${{ github.repository }}.git"
 
             if [ ! -d "$APP_DIR/.git" ]; then
-              mkdir -p /opt
+              mkdir -p "$(dirname "$APP_DIR")"
               git clone "$REPO_URL" "$APP_DIR"
             fi
 
