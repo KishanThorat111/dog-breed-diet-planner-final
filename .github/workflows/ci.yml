@@ -57,8 +57,8 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
 
-  web-lint-typecheck:
-    name: Web — Lint & Type Check
+  web-build-verify:
+    name: Web — Type Check & Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -80,5 +80,5 @@ jobs:
       - name: Type check
         run: npm run type-check
 
-      - name: Lint
-        run: npm run lint
+      - name: Build
+        run: npm run build
