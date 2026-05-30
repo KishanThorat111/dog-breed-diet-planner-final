@@ -31,24 +31,17 @@ jobs:
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
-        env:
-          GIT_PAT: ${{ secrets.GCP_VM_GIT_PAT }}
         with:
-          host: 8.231.121.51
-          username: ${{ secrets.GCP_VM_SSH_USER }}
-          key: ${{ secrets.GCP_VM_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.GCP_HOST }}
+          username: ${{ secrets.GCP_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          fingerprint: ${{ secrets.GCP_VM_SSH_FINGERPRINT }}
           script_stop: true
           script: |
             set -euo pipefail
 
             APP_DIR="/opt/dog-breed-identifier"
-            if [ -n "${GIT_PAT:-}" ]; then
-              REPO_URL="https://${GIT_PAT}@github.com/${{ github.repository }}.git"
-            else
-              REPO_URL="https://github.com/${{ github.repository }}.git"
-            fi
+            REPO_URL="https://github.com/${{ github.repository }}.git"
 
             if [ ! -d "$APP_DIR/.git" ]; then
               mkdir -p /opt
