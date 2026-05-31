@@ -1,9 +1,9 @@
 export const ACTIVITY_LEVELS = [
   { value: "sedentary", label: "Sedentary (mostly resting)" },
-  { value: "low", label: "Low (short daily walks)" },
+  { value: "light", label: "Light (short daily walks)" },
   { value: "moderate", label: "Moderate (1-2 hrs activity/day)" },
-  { value: "high", label: "High (2+ hrs vigorous activity)" },
-  { value: "very_high", label: "Very High (working/sport dog)" },
+  { value: "active", label: "Active (2+ hrs vigorous activity)" },
+  { value: "very_active", label: "Very Active (working/sport dog)" },
 ] as const;
 
 export const LIFE_STAGES = [

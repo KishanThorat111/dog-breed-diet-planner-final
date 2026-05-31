@@ -1,5 +1,14 @@
 # Dog Breed Diet Planner - Complete Live Setup Guide
 
+> Status: Archived legacy guide.
+>
+> This guide targets the old multi-provider flow (Railway, Vercel, Supabase) and is not the active production deployment model for this repository.
+>
+> For the current GCP single-VM deployment, use:
+> - [docs/ONE_SERVER_VM_WORKFLOW.md](docs/ONE_SERVER_VM_WORKFLOW.md)
+> - [deploy/one-server/docker-compose.yml](deploy/one-server/docker-compose.yml)
+> - [.github/workflows/deploy-api.yml](.github/workflows/deploy-api.yml)
+
 Last updated: 2026-05-30
 Audience: Anyone who wants to run this project on their own accounts (GitHub, Cloudflare, Supabase, Railway, Vercel)
 

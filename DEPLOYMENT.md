@@ -1,5 +1,14 @@
 # Dog Breed Diet Planner — Production Deployment Guide
 
+> Status: Archived legacy guide.
+>
+> This document describes an older Railway/Vercel/Supabase architecture and is not the active production path for this repository.
+>
+> Use the current single-VM guide instead:
+> - [docs/ONE_SERVER_VM_WORKFLOW.md](docs/ONE_SERVER_VM_WORKFLOW.md)
+> - [deploy/one-server/docker-compose.yml](deploy/one-server/docker-compose.yml)
+> - [.github/workflows/deploy-api.yml](.github/workflows/deploy-api.yml)
+
 ## Architecture Overview
 
 ```

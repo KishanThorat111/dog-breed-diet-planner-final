@@ -1,5 +1,14 @@
 # Deployment Guide
 
+> Status: Archived legacy guide.
+>
+> This file documents an older Railway/Vercel/Clerk/Upstash flow and is not the active production deployment path.
+>
+> Use the current single-VM deployment workflow:
+> - [docs/ONE_SERVER_VM_WORKFLOW.md](docs/ONE_SERVER_VM_WORKFLOW.md)
+> - [deploy/one-server/docker-compose.yml](deploy/one-server/docker-compose.yml)
+> - [.github/workflows/deploy-api.yml](.github/workflows/deploy-api.yml)
+
 ## Prerequisites
 
 - GitHub repository with secrets configured

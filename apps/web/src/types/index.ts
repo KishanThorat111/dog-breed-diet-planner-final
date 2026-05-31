@@ -23,7 +23,7 @@ export interface User {
 }
 
 // --- Pet ---
-export type ActivityLevel = "sedentary" | "low" | "moderate" | "high" | "very_high";
+export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
 export type LifeStage = "puppy" | "adult" | "senior";
 export type Sex = "male" | "female" | "male_neutered" | "female_spayed";
 

@@ -2,6 +2,12 @@
 
 An AI-powered SaaS that identifies your dog's breed from a photo and generates a personalized diet plan based on NRC/AAFCO nutritional guidelines.
 
+> Production note:
+> The active deployment path is single-VM on GCP (Docker Compose + Caddy).
+> Use [docs/ONE_SERVER_VM_WORKFLOW.md](docs/ONE_SERVER_VM_WORKFLOW.md) as the source of truth for production rollout.
+>
+> Some sections below describe older multi-provider deployments (Railway/Vercel/Supabase) and are retained for historical context.
+
 ## Recommended Deployment Profile (Single VM Production)
 
 For production deployment on one GCP VM:
