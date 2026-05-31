@@ -32,13 +32,15 @@ class TestAdminStats:
         assert response.status_code == 403
 
 
-class TestAdminPredictions:
+class TestAdminAI:
     @pytest.mark.asyncio
-    async def test_non_admin_cannot_list_all_predictions(self, client: AsyncClient) -> None:
-        response = await client.get("/api/v1/admin/predictions")
+    async def test_non_admin_cannot_read_ai_config(self, client: AsyncClient) -> None:
+        response = await client.get("/api/v1/admin/ai/config")
         assert response.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_admin_can_list_all_predictions(self, admin_client: AsyncClient) -> None:
-        response = await admin_client.get("/api/v1/admin/predictions")
-        assert response.status_code != 403
+    async def test_admin_can_read_ai_config(self, admin_client: AsyncClient) -> None:
+        response = await admin_client.get("/api/v1/admin/ai/config")
+        assert response.status_code == 200
+        body = response.json()
+        assert "providers" in body

@@ -66,10 +66,9 @@ Optional for smoother build performance:
 
 ## 4. Clone and prepare env files
 
-1. sudo mkdir -p /opt
-2. sudo chown $USER:$USER /opt
-3. git clone <repo-url> /opt/dog-breed-identifier
-4. cd /opt/dog-breed-identifier/deploy/one-server
+1. mkdir -p "$HOME"
+2. git clone <repo-url> "$HOME/dog-breed-identifier"
+3. cd "$HOME/dog-breed-identifier/deploy/one-server"
 5. cp .env.api.example .env.api
 6. cp .env.web.example .env.web
 7. cp .env.postgres.example .env.postgres
@@ -91,7 +90,7 @@ Edit .env.web:
 
 ## 5. Start stack
 
-From /opt/dog-breed-identifier/deploy/one-server:
+From $HOME/dog-breed-identifier/deploy/one-server:
 1. docker compose up -d --build
 
 ## 6. Verify deployment
@@ -117,12 +116,13 @@ Workflow file:
 1. [.github/workflows/deploy-api.yml](.github/workflows/deploy-api.yml)
 
 Required GitHub secrets:
-1. GCP_VM_SSH_USER
-2. GCP_VM_SSH_PRIVATE_KEY
+1. GCP_HOST
+2. GCP_USER
+3. SSH_PRIVATE_KEY
 
 Deployment behavior:
 1. SSH into 8.231.121.51
-2. Pull latest main branch in /opt/dog-breed-identifier
+2. Pull latest main branch in $HOME/dog-breed-identifier
 3. Validate env files exist
 4. Run docker compose up -d --build --remove-orphans
 

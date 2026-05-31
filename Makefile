@@ -30,7 +30,7 @@ setup: setup-api setup-web
 
 setup-api:
 	@echo "→ Installing Python dependencies..."
-	cd apps/api && pip install uv --quiet && uv sync --dev
+	cd apps/api && python -m pip install --upgrade pip && pip install -r requirements-dev.txt
 
 setup-web:
 	@echo "→ Installing Node dependencies..."
@@ -48,7 +48,7 @@ dev:
 
 dev-api:
 	@echo "→ Starting API at http://localhost:8000"
-	cd apps/api && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd apps/api && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 dev-web:
 	@echo "→ Starting Web at http://localhost:3000"
@@ -62,7 +62,7 @@ test: test-api
 
 test-api:
 	@echo "→ Running API tests..."
-	cd apps/api && uv run pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
+	cd apps/api && pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
 
 # ============================================================================
 # DATABASE
@@ -70,15 +70,15 @@ test-api:
 
 migrate:
 	@echo "→ Applying Alembic migrations..."
-	cd apps/api && uv run alembic upgrade head
+	cd apps/api && alembic upgrade head
 
 migrate-new:
 	@echo "Usage: make migrate-new MSG='your migration message'"
-	cd apps/api && uv run alembic revision --autogenerate -m "$(MSG)"
+	cd apps/api && alembic revision --autogenerate -m "$(MSG)"
 
 migrate-down:
 	@echo "→ Rolling back last migration..."
-	cd apps/api && uv run alembic downgrade -1
+	cd apps/api && alembic downgrade -1
 
 # ============================================================================
 # BUILD

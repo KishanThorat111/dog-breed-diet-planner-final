@@ -1,9 +1,8 @@
-"""
-Tests for authentication middleware and auth router (webhook handling).
-"""
+"""Tests for health and auth endpoints."""
 from __future__ import annotations
 
-import json
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
@@ -20,11 +19,12 @@ class TestHealthEndpoints:
         assert "environment" in body
 
     @pytest.mark.asyncio
-    async def test_health_includes_ml_status(self, client: AsyncClient) -> None:
+    async def test_health_includes_ai_fields(self, client: AsyncClient) -> None:
         response = await client.get("/health")
         body = response.json()
-        assert "ml_model" in body
-        assert body["ml_model"] in ("loaded", "not_loaded", "failed", "unloaded")
+        assert "ai_provider" in body
+        assert "ai_enabled" in body
+        assert "gemini_configured" in body
 
 
 class TestProtectedRoutes:
@@ -57,36 +57,63 @@ class TestProtectedRoutes:
         assert response.status_code != 403
 
 
-class TestWebhookEndpoint:
-    """Clerk webhook must verify signature unless in dev mode."""
+class TestAuthEndpoints:
+    """Register/login should work for local JWT auth."""
 
     @pytest.mark.asyncio
-    async def test_webhook_rejects_without_signature(self, client: AsyncClient) -> None:
-        """Webhook without svix headers should fail verification."""
-        response = await client.post(
-            "/api/v1/auth/webhook",
-            json={"type": "user.created", "data": {}},
-        )
-        # Should reject — no svix-signature header
-        # In dev mode with no CLERK_WEBHOOK_SECRET, it may pass with 422 (missing body fields)
-        assert response.status_code in (400, 401, 422, 204)
+    async def test_register_login_flow(self, client: AsyncClient) -> None:
+        email = f"user-{uuid.uuid4().hex[:8]}@example.com"
 
-    @pytest.mark.asyncio
-    async def test_webhook_user_created_event(self, client: AsyncClient) -> None:
-        """Webhook with valid user.created event shape should not 500."""
-        payload = {
-            "type": "user.created",
-            "data": {
-                "id": "user_test_webhook_123",
-                "email_addresses": [
-                    {"id": "ea_1", "email_address": "webhook@test.com"}
-                ],
-                "primary_email_address_id": "ea_1",
-                "first_name": "Webhook",
-                "last_name": "Test",
-                "image_url": None,
+        register = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "password": "password123",
+                "full_name": "Test User",
             },
-        }
-        response = await client.post("/api/v1/auth/webhook", json=payload)
-        # In dev mode (no webhook secret), the event is processed
-        assert response.status_code in (204, 401)
+        )
+        assert register.status_code == 201, register.text
+        reg_body = register.json()
+        assert "access_token" in reg_body
+        assert reg_body["email"] == email
+
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "password123"},
+        )
+        assert login.status_code == 200, login.text
+        login_body = login.json()
+        assert "access_token" in login_body
+        assert login_body["token_type"] == "bearer"
+
+    @pytest.mark.asyncio
+    async def test_register_duplicate_email_returns_conflict(self, client: AsyncClient) -> None:
+        email = f"dup-{uuid.uuid4().hex[:8]}@example.com"
+
+        first = await client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "password123", "full_name": "A"},
+        )
+        assert first.status_code == 201
+
+        second = await client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "password123", "full_name": "A"},
+        )
+        assert second.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_login_wrong_password_returns_401(self, client: AsyncClient) -> None:
+        email = f"wrongpass-{uuid.uuid4().hex[:8]}@example.com"
+
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "password123", "full_name": "A"},
+        )
+        assert response.status_code == 201
+
+        wrong_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "not-the-password"},
+        )
+        assert wrong_login.status_code == 401

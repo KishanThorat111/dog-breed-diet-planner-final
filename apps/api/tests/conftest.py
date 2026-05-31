@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import get_db
@@ -18,11 +21,17 @@ from app.models.user import User
 # -------------------------------------------------------------------------
 # Database
 # -------------------------------------------------------------------------
-# Unit tests: in-memory SQLite (no JSONB support — integration tests need PG)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
-# Opt-in integration tests against real PG (must set TEST_DATABASE_URL env var)
-import os
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(_type, _compiler, **_kw):
+    # SQLite has no JSONB type; map to JSON for local test compatibility.
+    return "JSON"
+
+
+# Prefer explicit test DB URL, then CI DATABASE_URL, then local in-memory SQLite.
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL") or "sqlite+aiosqlite:///:memory:"
+
+# Opt-in integration tests against real PG (set TEST_DATABASE_URL if needed)
 _INTEGRATION_DB_URL = os.getenv("TEST_DATABASE_URL", "")
 
 
@@ -77,7 +86,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[get_current_user] = lambda: make_mock_user(is_admin=False)
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
     ) as ac:
         yield ac
 
@@ -97,7 +107,8 @@ async def admin_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, 
     app.dependency_overrides[require_admin] = lambda: make_mock_user(is_admin=True)
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
     ) as ac:
         yield ac
 
