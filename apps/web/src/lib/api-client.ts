@@ -1,6 +1,8 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000");
 const API_DEBUG = process.env.NEXT_PUBLIC_API_DEBUG === "true" || process.env.NODE_ENV !== "production";
 
 function nextRequestId(): string {
