@@ -8,6 +8,11 @@ export default function CreditsAdmin() {
   const [userId, setUserId] = useState("");
   const [credits, setCredits] = useState(0);
   const [result, setResult] = useState<any>(null);
+  const user = tokenStorage.getUser();
+
+  if (!user || !(user as any).is_admin) {
+    return <div>Access denied: admin only.</div>;
+  }
 
   const handleTopup = async () => {
     try {

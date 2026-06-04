@@ -36,6 +36,7 @@ async def test_credit_deduction(db_session):
         prompt_tokens=50,
         completion_tokens=100,
         caller="test",
+        session=db_session,
     )
 
     result = await db_session.execute(select(Subscription).where(Subscription.user_id == user.id))

@@ -59,7 +59,7 @@ class PredictionService:
         from fastapi import HTTPException
 
         try:
-            ai_vision = await classify_breed_with_gemini(image_bytes, content_type)
+            ai_vision = await classify_breed_with_gemini(image_bytes, content_type, user_id=user_id, reference_type="prediction")
         except GeminiVisionError as ge:
             # Map Gemini errors to proper HTTP responses
             error_msg = ge.message
