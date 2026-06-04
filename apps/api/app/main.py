@@ -16,6 +16,17 @@ from app.config import settings
 from app.middleware.rate_limiter import limiter
 from app.routers import admin, auth, diet_plans, pets, predictions, reports
 
+# Optional Sentry initialization for production observability
+if settings.sentry_dsn:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+
+        sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.sentry_environment or settings.environment)
+        # We'll wrap the ASGI app with Sentry middleware after creation.
+    except Exception:
+        logger.warning("Failed to initialize Sentry SDK; continuing without Sentry")
+
 # --- Logging ---
 if settings.is_production:
     import json
@@ -118,6 +129,17 @@ app = FastAPI(
     openapi_url="/openapi.json" if not settings.is_production else None,
     lifespan=lifespan,
 )
+
+# If Sentry was initialized above, wrap the FastAPI ASGI app so errors are captured
+try:
+    if settings.sentry_dsn:
+        from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+
+        app.add_middleware(SentryAsgiMiddleware)
+        logger.info("Sentry ASGI middleware enabled")
+except Exception:
+    # If Sentry package wasn't available or middleware init failed, continue silently
+    logger.debug("Sentry middleware not enabled")
 
 # --- Rate limiter ---
 app.state.limiter = limiter

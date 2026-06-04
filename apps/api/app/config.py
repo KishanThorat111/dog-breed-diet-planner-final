@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     gemini_circuit_breaker_failure_threshold: int = 5
     gemini_circuit_breaker_cooldown_seconds: int = 60
 
+    # Sentry (optional) - DSN configured in production to capture errors
+    sentry_dsn: str = ""
+    sentry_environment: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
