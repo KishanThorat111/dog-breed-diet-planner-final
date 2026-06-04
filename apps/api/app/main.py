@@ -44,11 +44,40 @@ else:
 logger = logging.getLogger(__name__)
 
 
-# --- Lifespan ---
+# --- Gemini API Verification ---
+def _verify_gemini_config() -> None:
+    """Verify Gemini API is properly configured at startup."""
+    if not settings.gemini_api_key:
+        logger.error(
+            "⚠️  GEMINI_API_KEY is NOT SET. Breed classification will not work. "
+            "Set environment variable GEMINI_API_KEY with your Google AI API key from https://aistudio.google.com"
+        )
+        return
+
+    # Check key format (basic validation)
+    if len(settings.gemini_api_key) < 20:
+        logger.warning(
+            "⚠️  GEMINI_API_KEY appears too short (<%d chars). May be invalid. "
+            "Verify the key from https://aistudio.google.com",
+            20
+        )
+        return
+
+    key_display = settings.gemini_api_key[:12] + "..." + settings.gemini_api_key[-4:]
+    logger.info(f"✓ Gemini API key configured: {key_display}")
+    logger.info(
+        "  Vision models: gemini-2.5-flash (primary), gemini-2.0-flash (fallback)"
+    )
+    logger.info(
+        "  Free tier limits: 15 RPM, 1M tokens/day (upgrade at console.cloud.google.com)"
+    )
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting up...")
     logger.info("Gemini-only AI mode enabled for lightweight VM deployment.")
+
+    # Verify Gemini API configuration
+    _verify_gemini_config()
 
     # Ensure the anonymous user exists for the no-auth product testing flow.
     try:

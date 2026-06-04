@@ -50,25 +50,77 @@ class PredictionService:
 
         loop = asyncio.get_running_loop()
 
-        # 4. Gemini Vision only (no local model fallback on e2-micro).
-        from app.services.vision_service import classify_breed_with_gemini
+        # 4. Gemini Vision (with error handling)
+        from app.services.vision_service import (
+            classify_breed_with_gemini,
+            GeminiVisionError,
+            GeminiErrorType,
+        )
         from fastapi import HTTPException
 
-        ai_vision = await classify_breed_with_gemini(image_bytes, content_type)
+        try:
+            ai_vision = await classify_breed_with_gemini(image_bytes, content_type)
+        except GeminiVisionError as ge:
+            # Map Gemini errors to proper HTTP responses
+            error_msg = ge.message
+            
+            if ge.error_type == GeminiErrorType.INVALID_KEY:
+                logger.error("Gemini API key is invalid or not configured: %s", error_msg)
+                raise HTTPException(
+                    status_code=401,
+                    detail="AI service authentication failed. Please check server configuration.",
+                )
+            elif ge.error_type == GeminiErrorType.PERMISSION_DENIED:
+                logger.error("Gemini API permission denied: %s", error_msg)
+                raise HTTPException(
+                    status_code=403,
+                    detail="AI service access denied. Please check server configuration.",
+                )
+            elif ge.error_type == GeminiErrorType.QUOTA_EXHAUSTED:
+                logger.warning("Gemini API quota exhausted: %s", error_msg)
+                raise HTTPException(
+                    status_code=429,
+                    detail="AI service rate limited. Please try again in a moment.",
+                )
+            elif ge.error_type == GeminiErrorType.TIMEOUT:
+                logger.warning("Gemini API call timed out: %s", error_msg)
+                raise HTTPException(
+                    status_code=504,
+                    detail="AI service request timed out. Try uploading a smaller image.",
+                )
+            elif ge.error_type == GeminiErrorType.EMPTY_RESPONSE:
+                # Check if it's "no dog detected"
+                if ge.details.get("no_dog_detected"):
+                    logger.info("No dog detected in image")
+                    raise HTTPException(
+                        status_code=422,
+                        detail="No dog detected in this image. Please upload a clear photo of a dog.",
+                    )
+                # Otherwise fall through to generic 502
+                logger.warning("Gemini returned empty response: %s", error_msg)
+                raise HTTPException(
+                    status_code=502,
+                    detail="AI service returned invalid response. Please try again.",
+                )
+            elif ge.error_type == GeminiErrorType.INVALID_RESPONSE:
+                logger.error("Failed to parse Gemini response: %s", error_msg)
+                raise HTTPException(
+                    status_code=502,
+                    detail="AI service response could not be parsed. Please try again.",
+                )
+            else:
+                # All other errors (network, unknown, etc.)
+                logger.error("Gemini API error (%s): %s", ge.error_type, error_msg)
+                raise HTTPException(
+                    status_code=503,
+                    detail="AI service is temporarily unavailable. Please try again in a few moments.",
+                )
 
-        if ai_vision is not None and ai_vision.get("no_dog_detected"):
+        if ai_vision is None or not isinstance(ai_vision, dict):
+            logger.error("Unexpected response from classify_breed_with_gemini: %s", ai_vision)
             raise HTTPException(
-                status_code=422,
-                detail="No dog detected in this image. Please upload a clear photo of a dog.",
-            )
-
-        if ai_vision is None:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Gemini AI service is unavailable. "
-                    "Please retry in a few moments."
-                ),
+                status_code=502,
+                detail="AI service returned invalid response",
             )
 
         # Build a normalized InferencePipelineResult from Gemini's response

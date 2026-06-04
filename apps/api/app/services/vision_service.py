@@ -1,20 +1,108 @@
 """
 AI Vision Breed Classification Service.
 
-Uses Gemini Vision (gemini-1.5-flash) to identify dog breeds from images
+Uses Gemini Vision (gemini-2.5-flash / gemini-2.0-flash) to identify dog breeds from images
 with high accuracy. The model is NOT restricted to a fixed list — it is
 free to name any breed it sees, and we map the result to our taxonomy
 with fuzzy matching.
+
+Production-grade: error handling, retry logic, circuit breaker, structured logging.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+import time
+import traceback
 from difflib import get_close_matches
-from typing import Any
+from enum import Enum
+from typing import Any, Optional
+import urllib.error
+import urllib.request
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Error Types & Structures (Production-grade error handling)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class GeminiErrorType(str, Enum):
+    """Categorizes Gemini API failures for proper handling and client response."""
+    QUOTA_EXHAUSTED = "quota_exhausted"
+    INVALID_KEY = "invalid_key"
+    PERMISSION_DENIED = "permission_denied"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    TIMEOUT = "timeout"
+    INVALID_RESPONSE = "invalid_response"
+    EMPTY_RESPONSE = "empty_response"
+    NETWORK_ERROR = "network_error"
+    UNKNOWN = "unknown"
+
+
+class GeminiVisionError(Exception):
+    """Structured error type for Gemini Vision API failures."""
+    def __init__(
+        self,
+        error_type: GeminiErrorType,
+        message: str,
+        http_code: Optional[int] = None,
+        details: Optional[dict] = None,
+    ):
+        self.error_type = error_type
+        self.message = message
+        self.http_code = http_code
+        self.details = details or {}
+        super().__init__(message)
+
+
+class CircuitBreaker:
+    """Simple circuit breaker for model failure tracking (prevents hammering failed models)."""
+    def __init__(self, failure_threshold: int = 5, cooldown_seconds: int = 60):
+        self.failure_threshold = failure_threshold
+        self.cooldown_seconds = cooldown_seconds
+        self.failures = 0
+        self.last_failure_time = 0.0
+        self.is_open = False
+
+    def record_failure(self) -> None:
+        """Record a failure and open circuit if threshold exceeded."""
+        self.failures += 1
+        self.last_failure_time = time.time()
+        if self.failures >= self.failure_threshold:
+            self.is_open = True
+            logger.warning(f"Circuit breaker OPEN after {self.failures} failures")
+
+    def record_success(self) -> None:
+        """Reset circuit breaker on success."""
+        self.failures = 0
+        self.is_open = False
+
+    def allow_request(self) -> bool:
+        """Check if request is allowed (circuit closed or cooldown expired)."""
+        if not self.is_open:
+            return True
+        if time.time() - self.last_failure_time > self.cooldown_seconds:
+            self.is_open = False
+            self.failures = 0
+            logger.info("Circuit breaker CLOSED (cooldown reset)")
+            return True
+        return False
+
+
+# Circuit breakers per model (one per model instance)
+_circuit_breakers = {}
+
+def _get_circuit_breaker(model_name: str) -> CircuitBreaker:
+    """Get or create circuit breaker for a model."""
+    if model_name not in _circuit_breakers:
+        from app.config import settings
+        _circuit_breakers[model_name] = CircuitBreaker(
+            failure_threshold=settings.gemini_circuit_breaker_failure_threshold,
+            cooldown_seconds=settings.gemini_circuit_breaker_cooldown_seconds,
+        )
+    return _circuit_breakers[model_name]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Gemini prompt — India-aware, unrestricted breed identification
@@ -66,19 +154,51 @@ Use ONLY your visual analysis. Do NOT guess based on context clues outside the d
 
 
 def _parse_response(text: str) -> dict[str, Any] | None:
-    """Extract and parse the JSON from Gemini's response text."""
+    """
+    Extract and parse the JSON from Gemini's response text.
+    Handles markdown code blocks and mixed text responses.
+    Returns dict if successful, None if parsing fails.
+    """
+    if not text or not isinstance(text, str):
+        logger.warning("Invalid response text: %s", type(text))
+        return None
+        
     try:
+        # Try to clean markdown code blocks first
         cleaned = re.sub(r"```(?:json)?|```", "", text).strip()
-        return json.loads(cleaned)
-    except (json.JSONDecodeError, ValueError):
+        data = json.loads(cleaned)
+        
+        # Validate required fields
+        required_fields = ["is_dog", "top_breed_key", "top_display_name", "top_confidence"]
+        if not all(field in data for field in required_fields):
+            logger.warning(
+                "Parsed JSON missing required fields. Have: %s, Need: %s",
+                list(data.keys()), required_fields
+            )
+            return None
+        return data
+        
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.debug("Failed to parse cleaned JSON: %s", e)
+        
         # Try to extract JSON object from mixed text
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
             try:
-                return json.loads(match.group(0))
-            except (json.JSONDecodeError, ValueError):
-                pass
-        logger.warning("Failed to parse Gemini vision response: %r", text[:300])
+                data = json.loads(match.group(0))
+                required_fields = ["is_dog", "top_breed_key", "top_display_name", "top_confidence"]
+                if all(field in data for field in required_fields):
+                    logger.debug("Successfully extracted JSON from mixed text")
+                    return data
+                else:
+                    logger.warning(
+                        "Extracted JSON missing fields. Have: %s, Need: %s",
+                        list(data.keys()), required_fields
+                    )
+            except (json.JSONDecodeError, ValueError) as e2:
+                logger.debug("Failed to parse extracted JSON: %s", e2)
+        
+        logger.error("Could not parse any valid JSON from response: %r", text[:300])
         return None
 
 
@@ -151,30 +271,37 @@ def _jpeg_encode(image_bytes: bytes) -> bytes:
 async def classify_breed_with_gemini(
     image_bytes: bytes,
     content_type: str,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """
     Send image to Gemini Vision and return structured breed classification.
-    Uses the Gemini REST v1 API directly (no SDK — avoids gRPC v1beta routing
-    issues in google-generativeai 0.8.x).
-    Returns None if Gemini is not configured or the call fails.
+    Uses the Gemini REST v1 API directly (no SDK — avoids gRPC v1beta routing issues).
+    
+    Raises GeminiVisionError on failure with detailed error type and context.
+    Implements retry logic with exponential backoff for transient failures.
+    Uses circuit breaker to prevent hammering failed models.
+    
+    Returns:
+        dict with keys: top_breed, top_display_name, top_confidence, all_predictions, provider
+        
+    Raises:
+        GeminiVisionError: with error_type indicating failure reason (quota, invalid key, timeout, etc.)
     """
     import base64
     import io as _io
     import json as _json
-    import traceback
-    import urllib.error
-    import urllib.request
     from app.config import settings
 
     if not settings.gemini_api_key:
-        logger.warning(
-            "GEMINI_API_KEY is empty — Gemini Vision disabled."
+        logger.error("GEMINI_API_KEY is not configured")
+        raise GeminiVisionError(
+            GeminiErrorType.INVALID_KEY,
+            "Gemini API key not configured",
+            details={"action": "Set GEMINI_API_KEY environment variable"},
         )
-        return None
 
-    # Pre-process image to JPEG
+    # Pre-process image to JPEG for maximum compatibility
     jpeg_bytes = _jpeg_encode(image_bytes)
-    logger.info("Gemini Vision: sending %d KB JPEG", len(jpeg_bytes) // 1024)
+    logger.info("Gemini Vision: sending %d KB image", len(jpeg_bytes) // 1024)
 
     b64_image = base64.b64encode(jpeg_bytes).decode("utf-8")
     payload = {
@@ -192,123 +319,222 @@ async def classify_breed_with_gemini(
         },
     }
 
-    # Try primary model first, then a compatible fallback model.
-    _MODELS = [
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-    ]
-
-    import asyncio as _asyncio
-
-    raw_text: str = ""
-    last_error: str = ""
+    # Try models in order with exponential backoff on failures
+    _MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    
+    last_error: Optional[GeminiVisionError] = None
 
     for model_name in _MODELS:
-        api_url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model_name}:generateContent?key={settings.gemini_api_key}"
+        # Check circuit breaker
+        cb = _get_circuit_breaker(model_name)
+        if not cb.allow_request():
+            logger.debug(f"Circuit breaker OPEN for {model_name}, skipping")
+            continue
+
+        # Retry logic with exponential backoff (1s, 2s, 4s)
+        for attempt in range(1, 4):  # 3 attempts
+            backoff_seconds = 2 ** (attempt - 1)  # 1, 2, 4
+            
+            if attempt > 1:
+                logger.info(f"Retry {attempt}/3 for {model_name} after {backoff_seconds}s backoff")
+                await asyncio.sleep(backoff_seconds)
+
+            try:
+                api_url = (
+                    "https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{model_name}:generateContent?key={settings.gemini_api_key}"
+                )
+                logger.debug(f"Gemini Vision: calling {model_name} (attempt {attempt}/3)")
+                
+                req_body = _json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(
+                    url=api_url,
+                    data=req_body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                    timeout=settings.gemini_vision_timeout_seconds,
+                )
+                
+                loop = asyncio.get_running_loop()
+
+                def _http_call() -> str:
+                    with urllib.request.urlopen(req, timeout=settings.gemini_vision_timeout_seconds) as resp:
+                        return resp.read().decode("utf-8")
+
+                resp_text = await loop.run_in_executor(None, _http_call)
+                resp_data = _json.loads(resp_text)
+                
+                raw_text = (
+                    resp_data.get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text", "")
+                )
+                
+                logger.info(
+                    f"Gemini {model_name} SUCCESS: got response ({len(raw_text)} chars)"
+                )
+                
+                if not raw_text:
+                    raise GeminiVisionError(
+                        GeminiErrorType.EMPTY_RESPONSE,
+                        f"{model_name} returned empty response",
+                    )
+
+                # Attempt parsing
+                data = _parse_response(raw_text)
+                if not data:
+                    raise GeminiVisionError(
+                        GeminiErrorType.INVALID_RESPONSE,
+                        f"Failed to parse {model_name} response",
+                        details={"response_sample": raw_text[:200]},
+                    )
+
+                # Record success and process result
+                cb.record_success()
+                
+                if not data.get("is_dog", True):
+                    logger.info("Gemini: image does not contain a dog")
+                    raise GeminiVisionError(
+                        GeminiErrorType.EMPTY_RESPONSE,
+                        "No dog detected in image",
+                        details={"no_dog_detected": True},
+                    )
+
+                top_key = data.get("top_breed_key", "")
+                top_display = data.get("top_display_name", "")
+                top_confidence = float(data.get("top_confidence", 0.0))
+
+                # Build predictions list
+                predictions: list[dict[str, Any]] = []
+                for p in data.get("predictions", []):
+                    key = p.get("breed_key", "")
+                    disp = p.get("display_name", "")
+                    info = _map_to_known_breed(key, disp)
+                    if info:
+                        predictions.append({
+                            "breed": info.key,
+                            "display_name": info.display_name,
+                            "confidence": float(p.get("confidence", 0.0)),
+                            "size": info.size,
+                        })
+
+                # Ensure top prediction is in list
+                top_info = _map_to_known_breed(top_key, top_display)
+                if not top_info:
+                    top_info = _map_to_known_breed("mixed_breed")
+
+                if not predictions and top_info:
+                    predictions = [{
+                        "breed": top_info.key,
+                        "display_name": top_info.display_name,
+                        "confidence": top_confidence,
+                        "size": top_info.size,
+                    }]
+
+                logger.info(
+                    f"Gemini Vision: breed={top_info.key if top_info else 'unknown'} "
+                    f"confidence={top_confidence:.2f} model={model_name}"
+                )
+
+                return {
+                    "top_breed": top_info.key if top_info else "mixed_breed",
+                    "top_display_name": top_info.display_name if top_info else "Mixed Breed",
+                    "top_confidence": top_confidence,
+                    "all_predictions": predictions,
+                    "provider": "gemini-vision",
+                }
+
+            except GeminiVisionError:
+                # Re-raise our structured errors
+                raise
+            
+            except urllib.error.HTTPError as http_err:
+                err_body = http_err.read().decode("utf-8", errors="replace")
+                error_detail = f"HTTP {http_err.code}: {err_body[:200]}"
+                
+                logger.warning(f"Gemini {model_name} HTTP error (attempt {attempt}/3): {error_detail}")
+
+                # Determine error type from HTTP code
+                if http_err.code == 401:
+                    raise GeminiVisionError(
+                        GeminiErrorType.INVALID_KEY,
+                        "Invalid or expired Gemini API key",
+                        http_code=401,
+                        details={"model": model_name, "error_body": err_body[:300]},
+                    )
+                elif http_err.code == 403:
+                    raise GeminiVisionError(
+                        GeminiErrorType.PERMISSION_DENIED,
+                        "Insufficient permissions for Gemini API",
+                        http_code=403,
+                        details={"model": model_name, "error_body": err_body[:300]},
+                    )
+                elif http_err.code == 429:
+                    cb.record_failure()
+                    last_error = GeminiVisionError(
+                        GeminiErrorType.QUOTA_EXHAUSTED,
+                        f"Rate limited by Gemini API ({model_name})",
+                        http_code=429,
+                        details={"model": model_name},
+                    )
+                    # Continue to next retry attempt or next model
+                    if attempt < 3:
+                        logger.debug(f"Will retry {model_name} after backoff")
+                    continue
+                elif http_err.code == 404:
+                    logger.warning(f"Model {model_name} not found (404)")
+                    # Skip to next model
+                    break
+                else:
+                    # Other 5xx/4xx errors
+                    cb.record_failure()
+                    raise GeminiVisionError(
+                        GeminiErrorType.NETWORK_ERROR,
+                        f"HTTP {http_err.code} from Gemini API",
+                        http_code=http_err.code,
+                        details={"model": model_name, "error_body": err_body[:300]},
+                    )
+
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout calling {model_name} (attempt {attempt}/3)")
+                cb.record_failure()
+                last_error = GeminiVisionError(
+                    GeminiErrorType.TIMEOUT,
+                    f"Gemini API call timed out (>{settings.gemini_vision_timeout_seconds}s)",
+                    details={"model": model_name, "timeout_seconds": settings.gemini_vision_timeout_seconds},
+                )
+                if attempt < 3:
+                    continue  # Retry
+                # Fall through to try next model
+
+            except Exception as exc:
+                logger.error(
+                    f"Gemini {model_name} failed (attempt {attempt}/3): {exc}\n{traceback.format_exc()}"
+                )
+                cb.record_failure()
+                last_error = GeminiVisionError(
+                    GeminiErrorType.NETWORK_ERROR,
+                    f"Gemini API call failed: {str(exc)}",
+                    details={"model": model_name, "exception": type(exc).__name__},
+                )
+                if attempt < 3:
+                    continue  # Retry
+                # Fall through to try next model
+
+        # After all attempts for this model, continue to next model if available
+        continue
+
+    # All models and attempts exhausted
+    if last_error:
+        logger.error(
+            f"All Gemini models exhausted. Final error: {last_error.error_type} - {last_error.message}"
         )
-        logger.info("Gemini Vision: trying model %s", model_name)
-        try:
-            req_body = _json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                url=api_url,
-                data=req_body,
-                method="POST",
-                headers={"Content-Type": "application/json"},
-            )
-            loop = _asyncio.get_running_loop()
-
-            def _http_call() -> str:
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    return resp.read().decode("utf-8")
-
-            resp_text = await loop.run_in_executor(None, _http_call)
-            resp_data = _json.loads(resp_text)
-            raw_text = (
-                resp_data.get("candidates", [{}])[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
-            )
-            logger.info("Gemini %s response (%d chars): %s", model_name, len(raw_text), raw_text[:200])
-            break  # success — stop trying other models
-
-        except urllib.error.HTTPError as http_err:
-            err_body = http_err.read().decode("utf-8", errors="replace")
-            last_error = f"HTTP {http_err.code} ({model_name}): {err_body[:300]}"
-            logger.warning("Gemini %s failed: %s", model_name, last_error)
-            if http_err.code in (429, 404):
-                # Rate limited or model unavailable — try next model
-                await _asyncio.sleep(1)
-                continue
-            # Other HTTP error — non-retryable
-            logger.error("Gemini REST non-retryable error: %s", last_error)
-            return None
-        except Exception as exc:
-            logger.error("Gemini REST call failed (%s): %s\n%s", model_name, exc, traceback.format_exc())
-            return None
+        raise last_error
     else:
-        # All models exhausted.
-        logger.error("All Gemini models rate-limited. Last error: %s", last_error)
-        return None
-
-    if not raw_text:
-        logger.warning("Gemini returned empty response text")
-        return None
-
-    data = _parse_response(raw_text)
-    if not data:
-        return None
-
-    if not data.get("is_dog", True):
-        logger.info("Gemini: image does not appear to contain a dog.")
-        # Return special sentinel dict so caller can return a clear 422.
-        return {"no_dog_detected": True}
-
-    top_key = data.get("top_breed_key", "")
-    top_display = data.get("top_display_name", "")
-    top_confidence = float(data.get("top_confidence", 0.0))
-
-    # Build predictions list
-    predictions: list[dict[str, Any]] = []
-    for p in data.get("predictions", []):
-        key = p.get("breed_key", "")
-        disp = p.get("display_name", "")
-        info = _map_to_known_breed(key, disp)
-        if info:
-            predictions.append({
-                "breed": info.key,
-                "display_name": info.display_name,
-                "confidence": float(p.get("confidence", 0.0)),
-                "size": info.size,
-            })
-
-    # Ensure top prediction is in list
-    top_info = _map_to_known_breed(top_key, top_display)
-    if not top_info:
-        top_info = _map_to_known_breed("mixed_breed")
-
-    if not predictions and top_info:
-        predictions = [{
-            "breed": top_info.key,
-            "display_name": top_info.display_name,
-            "confidence": top_confidence,
-            "size": top_info.size,
-        }]
-
-    logger.info(
-        "Gemini Vision: top=%s confidence=%.2f alternatives=%d",
-        top_info.key if top_info else "unknown",
-        top_confidence,
-        len(predictions) - 1,
-    )
-
-    return {
-        "top_breed": top_info.key if top_info else "mixed_breed",
-        "top_display_name": top_info.display_name if top_info else "Mixed Breed",
-        "top_confidence": top_confidence,
-        "all_predictions": predictions,
-        "provider": "gemini-vision",
-    }
+        raise GeminiVisionError(
+            GeminiErrorType.UNKNOWN,
+            "All Gemini models unavailable or failed",
+            details={"models_tried": _MODELS},
+        )
 

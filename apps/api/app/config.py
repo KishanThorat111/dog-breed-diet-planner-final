@@ -48,6 +48,17 @@ class Settings(BaseSettings):
     ai_active_provider: str = "gemini"
     ai_enabled: str = "true"
 
+    # Gemini Vision API timeout (seconds)
+    gemini_vision_timeout_seconds: int = 30
+
+    # Gemini Vision retry configuration
+    gemini_vision_max_retries: int = 3
+    gemini_vision_retry_backoff_base: float = 1.0  # 1, 2, 4 seconds
+
+    # Circuit breaker for Gemini models
+    gemini_circuit_breaker_failure_threshold: int = 5
+    gemini_circuit_breaker_cooldown_seconds: int = 60
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
