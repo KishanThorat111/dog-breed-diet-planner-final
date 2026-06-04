@@ -17,13 +17,17 @@ from app.schemas.diet_plan import (
     FeedingScheduleItem,
 )
 from app.services.diet_engine import diet_engine
-from app.middleware.auth import ANONYMOUS_USER_ID
+from app.middleware.auth import ANONYMOUS_USER_ID, get_optional_user
+from fastapi import Depends
+from sqlalchemy import select
 
 router = APIRouter()
 
 
 class AnonDietPlanRequest(APIBaseModel):
-    """Anonymous diet-plan request — no pet_id required."""
+    """Diet-plan request. When authenticated and `pet_id` is provided, the plan will be persisted."""
+    pet_id: uuid.UUID | None = None
+    prediction_id: uuid.UUID | None = None
     breed: str | None = None
     age_months: Annotated[int | None, Field(ge=0, le=360)] = None
     weight_kg: Annotated[Decimal | None, Field(ge=Decimal("0.1"), le=Decimal("200"))] = None
@@ -38,13 +42,39 @@ class AnonDietPlanRequest(APIBaseModel):
 async def generate_diet_plan(
     request: AnonDietPlanRequest,
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ) -> DietPlanPublic:
-    """Generate a diet plan in-memory (no persistence) for anonymous testing."""
+    """Generate a diet plan. If an authenticated user provides `pet_id`, persist the plan."""
     breed = request.breed or "unknown"
     age_months = request.age_months if request.age_months is not None else 24
     weight_kg = float(request.weight_kg) if request.weight_kg is not None else 10.0
     activity_level = request.activity_level or "moderate"
 
+    # Authenticated + pet_id -> persist using DietService
+    if current_user and request.pet_id:
+        from app.services.diet_service import diet_service
+        from app.schemas.diet_plan import DietPlanGenerateRequest as SchemaReq
+        from app.models.pet import Pet as PetModel
+
+        # load and validate pet ownership
+        pet_res = await db.execute(select(PetModel).where(PetModel.id == request.pet_id, PetModel.user_id == current_user.id))
+        pet = pet_res.scalar_one_or_none()
+        if not pet:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found")
+
+        schema_req = SchemaReq(
+            pet_id=request.pet_id,
+            prediction_id=request.prediction_id,
+            breed=request.breed,
+            age_months=request.age_months,
+            weight_kg=request.weight_kg,
+            activity_level=request.activity_level,
+        )
+
+        plan = await diet_service.generate_for_pet(db, current_user.id, schema_req, pet)
+        return DietPlanPublic.model_validate(plan)
+
+    # Anonymous or no-pet fallback: in-memory generation (no persistence)
     result = diet_engine.generate(
         breed=breed,
         age_months=age_months,
@@ -85,11 +115,23 @@ async def generate_diet_plan(
 
 
 @router.get("/{plan_id}", response_model=DietPlanPublic)
-async def get_diet_plan(plan_id: uuid.UUID) -> DietPlanPublic:
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Diet plans are not persisted in anonymous mode.",
-    )
+async def get_diet_plan(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+) -> DietPlanPublic:
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Diet plans are not persisted in anonymous mode.",
+        )
+
+    from app.services.diet_service import diet_service
+
+    plan = await diet_service.get_by_id(db, plan_id, current_user.id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diet plan not found")
+    return DietPlanPublic.model_validate(plan)
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -97,5 +139,24 @@ async def list_diet_plans(
     pet_id: uuid.UUID | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ) -> PaginatedResponse:
+    if current_user:
+        from app.services.diet_service import diet_service
+
+        if pet_id:
+            plans, total = await diet_service.list_by_pet(db, pet_id, current_user.id, page, page_size)
+        else:
+            plans, total = await diet_service.list_by_user(db, current_user.id, page, page_size)
+
+        pages = (total + page_size - 1) // page_size if total else 0
+        return PaginatedResponse(
+            items=[DietPlanPublic.model_validate(p) for p in plans],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        )
+
     return PaginatedResponse(items=[], total=0, page=page, page_size=page_size, pages=0)
