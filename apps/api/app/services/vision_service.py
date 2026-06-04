@@ -320,7 +320,10 @@ async def classify_breed_with_gemini(
     }
 
     # Try models in order with exponential backoff on failures
-    _MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    # Primary: gemini-2.5-flash (best balance: image understanding + cost)
+    # Fallback: gemini-2.5-flash-lite (cost-efficient alternative)
+    # NOTE: gemini-2.0-flash was shut down on June 1, 2026
+    _MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
     
     last_error: Optional[GeminiVisionError] = None
 
@@ -352,7 +355,6 @@ async def classify_breed_with_gemini(
                     data=req_body,
                     method="POST",
                     headers={"Content-Type": "application/json"},
-                    timeout=settings.gemini_vision_timeout_seconds,
                 )
                 
                 loop = asyncio.get_running_loop()
