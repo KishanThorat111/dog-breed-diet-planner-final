@@ -163,6 +163,75 @@ async def check_ai_health() -> dict:
     return {"results": list(results)}
 
 
+@router.get("/ai/usage")
+async def list_ai_usage(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """List AI usage events for admin.
+
+    Paginated results ordered by newest first.
+    """
+    from sqlalchemy import select, func
+    from app.models.ai_usage import AIUsage
+
+    base = select(AIUsage)
+    count_result = await db.execute(select(func.count()).select_from(base.subquery()))
+    total = count_result.scalar_one()
+    result = await db.execute(base.order_by(AIUsage.created_at.desc()).offset((page - 1) * page_size).limit(page_size))
+    items = [dict(
+        id=str(r.id),
+        user_id=str(r.user_id) if r.user_id else None,
+        provider=r.provider,
+        model=r.model,
+        prompt_tokens=r.prompt_tokens,
+        completion_tokens=r.completion_tokens,
+        caller=r.caller,
+        reference_type=r.reference_type,
+        reference_id=str(r.reference_id) if r.reference_id else None,
+        created_at=r.created_at.isoformat() if r.created_at else None,
+    ) for r in result.scalars().all()]
+
+    pages = (total + page_size - 1) // page_size if total else 0
+    return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
+
+
+class CreditTopup(BaseModel):
+    user_id: str
+    credits: int
+
+
+@router.post("/credits/topup")
+async def topup_credits(body: CreditTopup, db: AsyncSession = Depends(get_db)) -> dict:
+    """Add credits to a user's subscription (admin only)."""
+    from sqlalchemy import select
+    from app.models.user import User
+    from app.models.subscription import Subscription
+    import uuid as _uuid
+
+    try:
+        user_id = _uuid.UUID(body.user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid user_id")
+
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    sub = (await db.execute(select(Subscription).where(Subscription.user_id == user_id))).scalar_one_or_none()
+    if not sub:
+        # create default subscription row
+        sub = Subscription(user_id=user_id, plan="free", credits_remaining=body.credits)
+        db.add(sub)
+        await db.commit()
+        return {"ok": True, "credits": sub.credits_remaining}
+
+    sub.credits_remaining = (sub.credits_remaining or 0) + body.credits
+    await db.commit()
+    return {"ok": True, "credits": sub.credits_remaining}
+
+
 class AITestRequest(BaseModel):
     provider: str
     prompt: str = "What is a Labrador Retriever's typical energy requirement?"

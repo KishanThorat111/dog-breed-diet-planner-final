@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.audit_log import AuditLog
     from app.models.pet import Pet
     from app.models.subscription import Subscription
+    from app.models.ai_usage import AIUsage
 
 
 class User(Base, UUIDMixin, TimestampMixin):
@@ -32,6 +33,7 @@ class User(Base, UUIDMixin, TimestampMixin):
     subscriptions: Mapped[list[Subscription]] = relationship(
         "Subscription", back_populates="user", lazy="select"
     )
+    ai_usage: Mapped[list[AIUsage]] = relationship("AIUsage", back_populates="user", lazy="select")
     audit_logs: Mapped[list[AuditLog]] = relationship(
         "AuditLog", back_populates="user", lazy="select"
     )

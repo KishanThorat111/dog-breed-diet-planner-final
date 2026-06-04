@@ -271,6 +271,9 @@ def _jpeg_encode(image_bytes: bytes) -> bytes:
 async def classify_breed_with_gemini(
     image_bytes: bytes,
     content_type: str,
+    user_id: "uuid.UUID | None" = None,
+    reference_type: str | None = None,
+    reference_id: "uuid.UUID | None" = None,
 ) -> dict[str, Any]:
     """
     Send image to Gemini Vision and return structured breed classification.
@@ -438,6 +441,31 @@ async def classify_breed_with_gemini(
                     f"Gemini Vision: breed={top_info.key if top_info else 'unknown'} "
                     f"confidence={top_confidence:.2f} model={model_name}"
                 )
+
+                # Attempt to record usage information if present in response
+                try:
+                    from app.services.ai_usage_service import schedule_record
+                    # Look for usage metadata in a few possible locations
+                    usage_meta = resp_data.get("metadata", {}) or {}
+                    cand_meta = resp_data.get("candidates", [{}])[0].get("metadata", {}) or {}
+                    usage = usage_meta.get("usage") or usage_meta.get("usage_metadata") or cand_meta.get("usage") or cand_meta.get("usage_metadata") or {}
+                    prompt_tokens = int(usage.get("prompt_token_count") or usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
+                    completion_tokens = int(usage.get("candidates_token_count") or usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+                    try:
+                        schedule_record(
+                            user_id=user_id,
+                            provider="gemini-vision",
+                            model=model_name,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            caller="vision_classify",
+                            reference_type=reference_type,
+                            reference_id=reference_id,
+                        )
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
 
                 return {
                     "top_breed": top_info.key if top_info else "mixed_breed",

@@ -59,6 +59,9 @@ class DietService:
                 supplement_flags=result.supplement_flags,
                 foods_to_avoid=result.foods_to_avoid,
                 health_conditions=list(pet.health_conditions),
+                user_id=user_id,
+                reference_type="prediction",
+                reference_id=request.prediction_id,
             )
             if ai_insights:
                 ai_provider_used = ai_insights.pop("_provider", None)

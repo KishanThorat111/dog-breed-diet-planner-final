@@ -137,6 +137,9 @@ async def enrich_diet_plan(
     supplement_flags: list[str],
     foods_to_avoid: list[str],
     health_conditions: list[str],
+    user_id: "uuid.UUID | None" = None,
+    reference_type: str | None = None,
+    reference_id: "uuid.UUID | None" = None,
 ) -> dict[str, Any] | None:
     """
     Return AI-generated diet insights for the given parameters, or None if:
@@ -189,9 +192,26 @@ async def enrich_diet_plan(
         metadata={"caller": "diet_enrichment", "breed": breed[:40]},
     )
 
+    from app.services.ai_usage_service import schedule_record
+
     for attempt in range(1, cfg.max_retries + 1):
         try:
             response = await provider.complete(request)
+            # Record usage asynchronously (user_id may be None for anonymous)
+            try:
+                schedule_record(
+                    user_id=user_id,
+                    provider=response.provider,
+                    model=response.model,
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
+                    caller=request.metadata.get("caller"),
+                    reference_type=reference_type,
+                    reference_id=reference_id,
+                )
+            except Exception:
+                # non-fatal — don't break enrichment if recording fails
+                pass
             insights: dict[str, Any] = json.loads(response.content)
 
             # Validate expected keys exist (defensive)
