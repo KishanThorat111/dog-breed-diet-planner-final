@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     # Sentry (optional) - DSN configured in production to capture errors
     sentry_dsn: str = ""
     sentry_environment: str = ""
+    # Optional release identifier (e.g. git sha) for Sentry
+    sentry_release: str = ""
 
     @property
     def is_production(self) -> bool:

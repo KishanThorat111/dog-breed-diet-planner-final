@@ -22,7 +22,14 @@ if settings.sentry_dsn:
         import sentry_sdk
         from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
-        sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.sentry_environment or settings.environment)
+        sentry_kwargs = {
+            "dsn": settings.sentry_dsn,
+            "environment": settings.sentry_environment or settings.environment,
+        }
+        if settings.sentry_release:
+            sentry_kwargs["release"] = settings.sentry_release
+
+        sentry_sdk.init(**sentry_kwargs)
         # We'll wrap the ASGI app with Sentry middleware after creation.
     except Exception:
         logger.warning("Failed to initialize Sentry SDK; continuing without Sentry")
