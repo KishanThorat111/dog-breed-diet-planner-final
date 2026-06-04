@@ -51,7 +51,8 @@ async def db_engine():
 
 @pytest_asyncio.fixture
 async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
-    session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    # Ensure session state expires on commit so concurrent commits are visible
+    session_factory = async_sessionmaker(db_engine, expire_on_commit=True)
     async with session_factory() as session:
         yield session
         await session.rollback()
