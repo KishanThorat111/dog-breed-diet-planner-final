@@ -138,6 +138,21 @@ export async function loginUser(email: string, password: string) {
     full_name: res.data.full_name,
     is_admin: res.data.is_admin,
   });
+  if (typeof window !== "undefined") {
+    try {
+      // Set cookies so server-side middleware can read auth state.
+      const userObj = {
+        user_id: res.data.user_id,
+        email: res.data.email,
+        full_name: res.data.full_name,
+        is_admin: res.data.is_admin,
+      };
+      document.cookie = `dietpaw_token=${encodeURIComponent(res.data.access_token)}; Path=/; SameSite=Lax`;
+      document.cookie = `dietpaw_user=${encodeURIComponent(JSON.stringify(userObj))}; Path=/; SameSite=Lax`;
+    } catch (e) {
+      // noop
+    }
+  }
   return res.data;
 }
 
@@ -150,6 +165,20 @@ export async function registerUser(email: string, password: string, full_name?: 
     full_name: res.data.full_name,
     is_admin: res.data.is_admin,
   });
+  if (typeof window !== "undefined") {
+    try {
+      const userObj = {
+        user_id: res.data.user_id,
+        email: res.data.email,
+        full_name: res.data.full_name,
+        is_admin: res.data.is_admin,
+      };
+      document.cookie = `dietpaw_token=${encodeURIComponent(res.data.access_token)}; Path=/; SameSite=Lax`;
+      document.cookie = `dietpaw_user=${encodeURIComponent(JSON.stringify(userObj))}; Path=/; SameSite=Lax`;
+    } catch (e) {
+      // noop
+    }
+  }
   return res.data;
 }
 
