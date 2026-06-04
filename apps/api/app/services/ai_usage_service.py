@@ -38,6 +38,40 @@ async def record_usage(
             await session.rollback()
             raise
 
+    # After recording, attempt to deduct credits if applicable
+    if user_id is None:
+        return
+
+    try:
+        from datetime import timezone
+        from sqlalchemy import select
+        from app.models.subscription import Subscription
+
+        now = datetime.now(timezone.utc)
+        async with AsyncSessionLocal() as session:
+            sub = (await session.execute(select(Subscription).where(Subscription.user_id == user_id))).scalar_one_or_none()
+            if not sub:
+                return
+
+            # If trial active, do not deduct
+            if sub.trial_ends_at and sub.trial_ends_at > now:
+                return
+
+            # Deduct tokens (policy: 1 credit per 100 tokens, round up)
+            total_tokens = int(prompt_tokens or 0) + int(completion_tokens or 0)
+            if total_tokens <= 0:
+                return
+
+            credits_to_deduct = (total_tokens + 99) // 100
+            sub.credits_remaining = max(0, (sub.credits_remaining or 0) - credits_to_deduct)
+            try:
+                await session.commit()
+            except Exception:
+                await session.rollback()
+    except Exception:
+        # Non-fatal: usage recording should not break caller
+        return
+
 
 # helper to schedule fire-and-forget recording from sync contexts
 def schedule_record(*args, **kwargs):
