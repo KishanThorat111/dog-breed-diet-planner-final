@@ -29,8 +29,25 @@ export function useGenerateDietPlan() {
       const res = await api.post("/diet-plans/generate", request);
       return res.data as DietPlan;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["diet-plans"] });
+    onSuccess: (plan: DietPlan) => {
+      const ANON_ID = "00000000-0000-0000-0000-000000000001";
+      // If the plan is anonymous (quick-generate), inject it into the local cache
+      if (plan.user_id === ANON_ID) {
+        queryClient.setQueryData(["diet-plans"], (old: PaginatedResponse<DietPlan> | undefined) => {
+          const prevItems = old?.items ?? [];
+          const newItems = [plan, ...prevItems];
+          return {
+            items: newItems,
+            total: (old?.total ?? 0) + 1,
+            page: old?.page ?? 1,
+            page_size: old?.page_size ?? 10,
+            pages: Math.ceil(((old?.total ?? 0) + 1) / (old?.page_size ?? 10)),
+          } as PaginatedResponse<DietPlan>;
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["diet-plans"] });
+      }
+
       toast.success("Diet plan generated");
     },
     onError: (err: Error) => {
