@@ -127,3 +127,41 @@ async def test_multiple_diet_generations_create_distinct_saved_reports(auth_clie
     breeds = {item["breed"] for item in body["items"]}
     assert "labrador_retriever" in breeds
     assert "thai_ridgeback" in breeds
+
+
+@pytest.mark.asyncio
+async def test_generate_without_pet_id_persists_plan_creates_pet_and_downloads_pdf(auth_client: AsyncClient) -> None:
+    headers = await _register_and_auth_headers(auth_client)
+
+    plan_response = await auth_client.post(
+        "/api/v1/diet-plans/generate",
+        headers=headers,
+        json={
+            "pet_name": "Thai Ridgeback",
+            "breed": "thai_ridgeback",
+            "age_months": 26,
+            "weight_kg": "22.0",
+            "activity_level": "active",
+            "sex": "male",
+        },
+    )
+    assert plan_response.status_code == 201, plan_response.text
+    plan = plan_response.json()
+
+    assert plan["breed"] == "thai_ridgeback"
+    assert plan["pet_id"]
+    assert plan["user_id"] != "00000000-0000-0000-0000-000000000001"
+
+    pet_response = await auth_client.get(f"/api/v1/pets/{plan['pet_id']}", headers=headers)
+    assert pet_response.status_code == 200, pet_response.text
+    pet = pet_response.json()
+    assert pet["name"] == "Thai Ridgeback"
+    assert pet["breed"] == "thai_ridgeback"
+
+    report_response = await auth_client.get(
+        f"/api/v1/reports/diet-plan/{plan['id']}/pdf",
+        headers=headers,
+    )
+    assert report_response.status_code == 200, report_response.text
+    assert report_response.headers.get("content-type", "").startswith("application/pdf")
+    assert report_response.content.startswith(b"%PDF")

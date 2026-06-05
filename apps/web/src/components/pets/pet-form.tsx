@@ -31,7 +31,9 @@ export function PetForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: PetCreate = { ...form };
+    const payload = { ...form } as PetCreate & { is_pregnant?: boolean; is_lactating?: boolean };
+    delete payload.is_pregnant;
+    delete payload.is_lactating;
     if (!payload.breed) delete payload.breed;
     if (!payload.age_months) delete payload.age_months;
     if (!payload.weight_kg) delete payload.weight_kg;

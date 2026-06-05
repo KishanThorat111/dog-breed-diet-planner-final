@@ -15,7 +15,7 @@ export default function ReportsPage() {
   // Use authenticated API client — includes Clerk JWT in Authorization header
   const apiClient = useApiClient();
   const [downloading, setDownloading] = useState<string | null>(null);
-  const savedPlans = (dietPlans ?? []).filter((plan) => plan.user_id !== ANON_USER_ID);
+  const plans = dietPlans ?? [];
 
   const downloadReport = async (planId: string) => {
     const key = planId;
@@ -49,11 +49,13 @@ export default function ReportsPage() {
         </p>
       </div>
 
-      {savedPlans.length > 0 ? (
+      {plans.length > 0 ? (
         <div className="space-y-3">
-          {savedPlans.map((plan) => {
+          {plans.map((plan) => {
             const pet = pets?.find((p) => p.id === plan.pet_id);
             const key = plan.id;
+            const isDownloadable = plan.user_id !== ANON_USER_ID;
+            const petLabel = pet?.name || plan.breed.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()) || "Dog";
             return (
               <div
                 key={plan.id}
@@ -65,7 +67,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="font-medium text-foreground">
-                      {pet?.name || "Pet"} — Diet Plan
+                      {petLabel} — Diet Plan
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {new Date(plan.created_at).toLocaleDateString()} ·{" "}
@@ -75,7 +77,7 @@ export default function ReportsPage() {
                 </div>
                 <button
                   onClick={() => downloadReport(plan.id)}
-                  disabled={downloading === key}
+                  disabled={downloading === key || !isDownloadable}
                   className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {downloading === key ? (
@@ -83,7 +85,7 @@ export default function ReportsPage() {
                   ) : (
                     <Download className="h-4 w-4" />
                   )}
-                  PDF
+                  {isDownloadable ? "PDF" : "Not Saved"}
                 </button>
               </div>
             );
@@ -91,9 +93,9 @@ export default function ReportsPage() {
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 py-16 text-center">
-          <p className="text-muted-foreground">No saved reports available yet.</p>
+          <p className="text-muted-foreground">No reports available yet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Generate a diet plan for a selected pet to save and download a PDF report.
+            Generate a diet plan from Analyze or Diet Plans to create downloadable reports.
           </p>
         </div>
       )}

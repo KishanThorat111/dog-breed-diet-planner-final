@@ -7,7 +7,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { capitalize } from "@/lib/utils";
-import { toast } from "sonner";
 
 interface PredictionResultProps {
   prediction: Prediction;
@@ -15,7 +14,7 @@ interface PredictionResultProps {
 
 export function PredictionResult({ prediction }: PredictionResultProps) {
   const { pets } = usePets();
-  const { mutate: generatePlan, isPending, data: dietPlan } = useGenerateDietPlan();
+  const { mutate: generatePlan, isPending } = useGenerateDietPlan();
   const [selectedPetId, setSelectedPetId] = useState<string>("");
   const router = useRouter();
 
@@ -25,20 +24,15 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
   const hasPets = pets && pets.length > 0;
 
   const handleGeneratePlan = () => {
-    if (hasPets && !selectedPetId) {
-      toast.error("Select a pet to save this diet plan and include it in reports.");
-      return;
-    }
-
     if (hasPets && selectedPetId) {
       generatePlan(
         { pet_id: selectedPetId, prediction_id: prediction.id, breed: breedKey },
         { onSuccess: () => router.push("/diet-plans") }
       );
     } else {
-      // Anonymous quick-generate: use breed from prediction directly
+      // Generate from prediction and let backend create a pet profile when needed.
       generatePlan(
-        { breed: breedKey, prediction_id: prediction.id },
+        { breed: breedKey, pet_name: breedDisplay, prediction_id: prediction.id },
         { onSuccess: () => router.push("/diet-plans") }
       );
     }
@@ -116,7 +110,7 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
               onChange={(e) => setSelectedPetId(e.target.value)}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <option value="">Select a pet to save this plan…</option>
+              <option value="">Create a new pet from this result (recommended)</option>
               {pets.map((pet) => (
                 <option key={pet.id} value={pet.id}>
                   {pet.name}

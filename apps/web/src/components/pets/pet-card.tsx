@@ -33,7 +33,7 @@ export function PetCard({ pet }: PetCardProps) {
         <div className="relative">
           <button
             onClick={() => setShowMenu((v) => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all hover:bg-muted group-hover:opacity-100"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground opacity-100 transition-all hover:bg-muted sm:opacity-0 sm:group-hover:opacity-100"
           >
             <MoreVertical className="h-4 w-4" />
           </button>
