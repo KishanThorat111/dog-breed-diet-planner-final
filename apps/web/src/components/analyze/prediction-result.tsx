@@ -3,7 +3,7 @@
 import type { Prediction } from "@/types";
 import { useGenerateDietPlan } from "@/hooks/use-diet-plans";
 import { usePets } from "@/hooks/use-pets";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { capitalize } from "@/lib/utils";
@@ -18,9 +18,37 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
   const [selectedPetId, setSelectedPetId] = useState<string>("");
   const router = useRouter();
 
-  const topBreed = prediction.all_predictions[0];
-  const breedKey = prediction.top_breed;
-  const breedDisplay = topBreed?.display_name ?? capitalize(prediction.top_breed);
+  const toPercent = (value: number | undefined) =>
+    Math.round(Math.max(0, Math.min(1, value ?? 0)) * 100);
+
+  const rankedPredictions = useMemo(() => {
+    const all = [...(prediction.all_predictions || [])];
+
+    if (prediction.top_breed) {
+      all.push({
+        breed: prediction.top_breed,
+        confidence: Number(prediction.top_confidence ?? 0),
+        display_name: capitalize(prediction.top_breed),
+        size: all[0]?.size ?? "unknown",
+      });
+    }
+
+    const bestByBreed = new Map<string, (typeof all)[number]>();
+    for (const item of all) {
+      const key = item.breed;
+      const existing = bestByBreed.get(key);
+      if (!existing || (item.confidence ?? 0) > (existing.confidence ?? 0)) {
+        bestByBreed.set(key, item);
+      }
+    }
+
+    return [...bestByBreed.values()].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+  }, [prediction]);
+
+  const topPrediction = rankedPredictions[0];
+  const breedKey = topPrediction?.breed || prediction.top_breed || "mixed_breed";
+  const breedDisplay = topPrediction?.display_name ?? capitalize(breedKey);
+  const topConfidencePct = toPercent(topPrediction?.confidence ?? prediction.top_confidence);
   const hasPets = pets && pets.length > 0;
 
   const handleGeneratePlan = () => {
@@ -58,27 +86,27 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${Math.round(prediction.top_confidence * 100)}%` }}
+              style={{ width: `${topConfidencePct}%` }}
             />
           </div>
           <span className="text-sm font-medium text-primary">
-            {Math.round(prediction.top_confidence * 100)}%
+            {topConfidencePct}%
           </span>
         </div>
-        {topBreed?.size && (
+        {topPrediction?.size && (
           <p className="mt-2 text-xs text-muted-foreground capitalize">
-            Size: {topBreed.size}
+            Size: {topPrediction.size}
           </p>
         )}
       </div>
 
       {/* Other predictions */}
-      {prediction.all_predictions.length > 1 && (
+      {rankedPredictions.length > 1 && (
         <div className="mb-4 space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Other possibilities
           </p>
-          {prediction.all_predictions.slice(1, 5).map((p) => (
+          {rankedPredictions.slice(1, 5).map((p) => (
             <div key={p.breed} className="flex items-center gap-2">
               <span className="flex-1 text-sm text-muted-foreground">
                 {p.display_name}
@@ -86,11 +114,11 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
               <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-muted-foreground/40"
-                  style={{ width: `${Math.round(p.confidence * 100)}%` }}
+                  style={{ width: `${toPercent(p.confidence)}%` }}
                 />
               </div>
               <span className="w-10 text-right text-xs text-muted-foreground">
-                {Math.round(p.confidence * 100)}%
+                {toPercent(p.confidence)}%
               </span>
             </div>
           ))}
@@ -110,7 +138,9 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
               onChange={(e) => setSelectedPetId(e.target.value)}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <option value="">Create a new pet from this result (recommended)</option>
+              <option value="">
+                {`Create a new pet from this result (recommended: ${breedDisplay} ${topConfidencePct}%)`}
+              </option>
               {pets.map((pet) => (
                 <option key={pet.id} value={pet.id}>
                   {pet.name}

@@ -6,7 +6,8 @@ import re
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.diet_plan import DietPlan
@@ -17,6 +18,13 @@ from app.services.diet_engine import diet_engine
 logger = logging.getLogger(__name__)
 
 _ALLOWED_ACTIVITY_LEVELS = {"sedentary", "light", "moderate", "active", "very_active"}
+
+_DIET_PLAN_JSON_COLUMNS = (
+    "food_recommendations",
+    "foods_to_avoid",
+    "supplement_flags",
+    "feeding_schedule",
+)
 
 
 def _normalize_breed(value: object | None) -> str:
@@ -64,6 +72,95 @@ def _normalize_text_list(value: object | None) -> list[str]:
         if text and text not in {"none", "null"}:
             normalized.append(text)
     return normalized
+
+
+def _is_missing_diet_plan_column_error(exc: Exception) -> bool:
+    text_value = str(exc).lower()
+    if "diet_plans" not in text_value:
+        return False
+    if "does not exist" not in text_value and "no such column" not in text_value:
+        return False
+    return any(column in text_value for column in _DIET_PLAN_JSON_COLUMNS)
+
+
+async def _ensure_diet_plan_columns(db: AsyncSession) -> None:
+    """Add missing diet_plans JSON columns on legacy databases and backfill defaults."""
+    await db.execute(
+        text("ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS food_recommendations JSONB")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS foods_to_avoid JSONB")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS supplement_flags JSONB")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS feeding_schedule JSONB")
+    )
+
+    # Backfill from historical column where available, then enforce non-null defaults.
+    has_recommendations = (
+        await db.execute(
+            text(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'diet_plans' AND column_name = 'recommendations'
+                LIMIT 1
+                """
+            )
+        )
+    ).scalar_one_or_none() is not None
+
+    if has_recommendations:
+        await db.execute(
+            text(
+                """
+                UPDATE diet_plans
+                SET food_recommendations = COALESCE(food_recommendations, recommendations, '[]'::jsonb),
+                    foods_to_avoid = COALESCE(foods_to_avoid, '[]'::jsonb),
+                    supplement_flags = COALESCE(supplement_flags, '[]'::jsonb),
+                    feeding_schedule = COALESCE(feeding_schedule, '[]'::jsonb)
+                """
+            )
+        )
+    else:
+        await db.execute(
+            text(
+                """
+                UPDATE diet_plans
+                SET food_recommendations = COALESCE(food_recommendations, '[]'::jsonb),
+                    foods_to_avoid = COALESCE(foods_to_avoid, '[]'::jsonb),
+                    supplement_flags = COALESCE(supplement_flags, '[]'::jsonb),
+                    feeding_schedule = COALESCE(feeding_schedule, '[]'::jsonb)
+                """
+            )
+        )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN food_recommendations SET DEFAULT '[]'::jsonb")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN foods_to_avoid SET DEFAULT '[]'::jsonb")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN supplement_flags SET DEFAULT '[]'::jsonb")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN feeding_schedule SET DEFAULT '[]'::jsonb")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN food_recommendations SET NOT NULL")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN foods_to_avoid SET NOT NULL")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN supplement_flags SET NOT NULL")
+    )
+    await db.execute(
+        text("ALTER TABLE diet_plans ALTER COLUMN feeding_schedule SET NOT NULL")
+    )
+    await db.commit()
 
 
 class DietService:
@@ -165,7 +262,20 @@ class DietService:
             ai_provider_used=ai_provider_used,
         )
         db.add(plan)
-        await db.commit()
+        try:
+            await db.commit()
+        except ProgrammingError as exc:
+            await db.rollback()
+            if not _is_missing_diet_plan_column_error(exc):
+                raise
+
+            logger.warning(
+                "Detected legacy diet_plans schema during save; applying compatibility columns and retrying. err=%s",
+                exc,
+            )
+            await _ensure_diet_plan_columns(db)
+            db.add(plan)
+            await db.commit()
         await db.refresh(plan)
         logger.info(
             "Generated diet plan id=%s for pet_id=%s ai_enriched=%s",

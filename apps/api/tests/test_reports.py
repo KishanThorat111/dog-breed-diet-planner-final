@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.models.pet import Pet
+from app.models.prediction import AIPrediction
 
 
 async def _register_and_auth_headers(auth_client: AsyncClient) -> dict[str, str]:
@@ -335,3 +336,52 @@ async def test_report_download_works_for_soft_deleted_pet(auth_client: AsyncClie
     )
     assert report_response.status_code == 200, report_response.text
     assert report_response.headers.get("content-type", "").startswith("application/pdf")
+
+
+@pytest.mark.asyncio
+async def test_generate_from_prediction_uses_highest_confidence_recommendation(
+    auth_client: AsyncClient,
+    db_session,
+) -> None:
+    register = await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": f"prediction-{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123",
+            "full_name": "Prediction User",
+        },
+    )
+    assert register.status_code == 201, register.text
+    token = register.json()["access_token"]
+    user_id = uuid.UUID(register.json()["user_id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    prediction = AIPrediction(
+        user_id=user_id,
+        pet_id=None,
+        upload_id=None,
+        top_breed="mixed_breed",
+        top_confidence=Decimal("0.10"),
+        all_predictions=[
+            {"breed": "mixed_breed", "display_name": "Mixed Breed", "confidence": 0.10},
+            {"breed": "german_shepherd", "display_name": "German Shepherd", "confidence": 0.99},
+        ],
+        model_version="gemini-vision",
+        inference_time_ms=11,
+    )
+    db_session.add(prediction)
+    await db_session.commit()
+    await db_session.refresh(prediction)
+
+    response = await auth_client.post(
+        "/api/v1/diet-plans/generate",
+        headers=headers,
+        json={"prediction_id": str(prediction.id)},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["breed"] == "german_shepherd"
+
+    pet_response = await auth_client.get(f"/api/v1/pets/{body['pet_id']}", headers=headers)
+    assert pet_response.status_code == 200, pet_response.text
+    assert pet_response.json()["breed"] == "german_shepherd"

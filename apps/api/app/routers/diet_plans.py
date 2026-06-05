@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -22,6 +24,9 @@ from app.services.diet_engine import diet_engine
 from app.middleware.auth import ANONYMOUS_USER_ID, get_optional_user
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+_ALLOWED_ACTIVITY_LEVELS = {"sedentary", "light", "moderate", "active", "very_active"}
 
 
 def _derive_life_stage(age_months: int) -> str:
@@ -37,6 +42,48 @@ def _breed_to_pet_name(breed: str | None) -> str:
         return "My Dog"
     name = breed.replace("_", " ").strip().title()
     return name or "My Dog"
+
+
+def _normalize_breed(value: str | None) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return "mixed_breed"
+    text = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+    if len(text) > 100:
+        text = text[:100].rstrip("_")
+    return text or "mixed_breed"
+
+
+def _normalize_activity(value: str | None) -> str:
+    activity = str(value or "").strip().lower()
+    return activity if activity in _ALLOWED_ACTIVITY_LEVELS else "moderate"
+
+
+def _prediction_recommended_breed(prediction) -> str | None:
+    if not prediction:
+        return None
+
+    best_breed: str | None = None
+    best_confidence = -1.0
+
+    for raw in prediction.all_predictions or []:
+        if not isinstance(raw, dict):
+            continue
+        candidate = _normalize_breed(raw.get("breed") or raw.get("breed_key"))
+        if not candidate:
+            continue
+        try:
+            confidence = float(raw.get("confidence") or 0.0)
+        except Exception:
+            confidence = 0.0
+        if confidence > best_confidence:
+            best_confidence = confidence
+            best_breed = candidate
+
+    if best_breed:
+        return best_breed
+
+    return _normalize_breed(getattr(prediction, "top_breed", None))
 
 
 def _safe_pet_name(name: str | None, fallback_breed: str | None) -> str:
@@ -75,10 +122,10 @@ async def generate_diet_plan(
     current_user=Depends(get_optional_user),
 ) -> DietPlanPublic:
     """Generate a diet plan. Authenticated requests are persisted for reports/download."""
-    breed = request.breed or "unknown"
+    breed = _normalize_breed(request.breed or "unknown")
     age_months = request.age_months if request.age_months is not None else 24
     weight_kg = float(request.weight_kg) if request.weight_kg is not None else 10.0
-    activity_level = request.activity_level or "moderate"
+    activity_level = _normalize_activity(request.activity_level)
 
     if current_user:
         from app.services.diet_service import diet_service
@@ -100,10 +147,16 @@ async def generate_diet_plan(
             if not prediction:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prediction not found")
 
-        resolved_breed = request.breed or (prediction.top_breed if prediction else None) or "mixed_breed"
+        recommended_prediction_breed = _prediction_recommended_breed(prediction)
+        resolved_breed = _normalize_breed(
+            request.breed
+            or recommended_prediction_breed
+            or (prediction.top_breed if prediction else None)
+            or "mixed_breed"
+        )
         resolved_age_months = request.age_months if request.age_months is not None else 24
         resolved_weight = float(request.weight_kg) if request.weight_kg is not None else 10.0
-        resolved_activity = request.activity_level or "moderate"
+        resolved_activity = _normalize_activity(request.activity_level)
 
         if request.pet_id:
             # load and validate pet ownership
@@ -142,10 +195,10 @@ async def generate_diet_plan(
         schema_req = SchemaReq(
             pet_id=pet.id,
             prediction_id=request.prediction_id,
-            breed=request.breed or (prediction.top_breed if prediction else None),
+            breed=resolved_breed,
             age_months=request.age_months,
             weight_kg=request.weight_kg,
-            activity_level=request.activity_level,
+            activity_level=resolved_activity,
         )
 
         plan = await diet_service.generate_for_pet(db, current_user.id, schema_req, pet)
