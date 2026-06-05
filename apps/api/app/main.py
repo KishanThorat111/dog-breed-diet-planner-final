@@ -14,7 +14,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.middleware.rate_limiter import limiter
-from app.routers import admin, auth, diet_plans, pets, predictions, reports
+from app.routers import admin, auth, diet_plans, pets, predictions, reports, wellness
 
 # Optional Sentry initialization for production observability
 if settings.sentry_dsn:
@@ -230,6 +230,7 @@ app.include_router(predictions.router, prefix=f"{API_V1}/predictions", tags=["pr
 app.include_router(diet_plans.router,  prefix=f"{API_V1}/diet-plans",  tags=["diet-plans"])
 app.include_router(reports.router,     prefix=f"{API_V1}/reports",     tags=["reports"])
 app.include_router(admin.router,       prefix=f"{API_V1}/admin",       tags=["admin"])
+app.include_router(wellness.router,    prefix=f"{API_V1}/wellness",    tags=["wellness"])
 
 
 # --- Health ---

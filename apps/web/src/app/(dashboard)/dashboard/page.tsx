@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Camera, Dog, FileText, Plus, Sparkles } from "lucide-react";
+import { Activity, ArrowRight, Camera, Dog, FileText, Plus, Sparkles } from "lucide-react";
 
 export const metadata = { title: "Dashboard" };
 
@@ -67,6 +67,22 @@ export default function DashboardPage() {
               <h3 className="font-semibold text-foreground">Download Reports</h3>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 Export professional PDF diet reports for your vet
+              </p>
+            </div>
+            <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" />
+          </Link>
+
+          <Link
+            href="/wellness"
+            className="group flex items-start gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:border-primary/40 hover:shadow-md"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 transition-colors group-hover:bg-sky-500 group-hover:text-white dark:text-sky-400">
+              <Activity className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Wellness Center</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Track weight logs and vaccination reminders for each pet
               </p>
             </div>
             <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" />

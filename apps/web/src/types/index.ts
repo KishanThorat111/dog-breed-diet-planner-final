@@ -138,3 +138,84 @@ export interface GenerateDietPlanRequest {
   weight_kg?: number;
   activity_level?: string;
 }
+
+// --- Wellness ---
+export type VaccinationStatus = "overdue" | "due_soon" | "scheduled" | "completed";
+export type WeightTrend = "up" | "down" | "stable" | "baseline" | "no_data";
+
+export interface WeightLog {
+  id: string;
+  pet_id: string;
+  user_id: string;
+  measured_on: string;
+  weight_kg: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface WeightLogCreate {
+  measured_on: string;
+  weight_kg: number;
+  notes?: string;
+}
+
+export interface Vaccination {
+  id: string;
+  pet_id: string;
+  user_id: string;
+  vaccine_name: string;
+  due_on: string;
+  administered_on: string | null;
+  is_completed: boolean;
+  reminder_days_before: number;
+  notes: string | null;
+  status: VaccinationStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VaccinationCreate {
+  vaccine_name: string;
+  due_on: string;
+  administered_on?: string;
+  is_completed?: boolean;
+  reminder_days_before?: number;
+  notes?: string;
+}
+
+export interface VaccinationUpdate {
+  vaccine_name?: string;
+  due_on?: string;
+  administered_on?: string;
+  is_completed?: boolean;
+  reminder_days_before?: number;
+  notes?: string;
+}
+
+export interface WellnessReminder {
+  vaccination_id: string;
+  pet_id: string;
+  pet_name: string;
+  vaccine_name: string;
+  due_on: string;
+  days_until_due: number;
+  status: VaccinationStatus;
+}
+
+export interface PetWeightTrend {
+  pet_id: string;
+  pet_name: string;
+  latest_weight_kg: number | null;
+  previous_weight_kg: number | null;
+  delta_kg: number | null;
+  trend: WeightTrend;
+}
+
+export interface WellnessSummary {
+  total_pets: number;
+  pets_with_weight_logs: number;
+  upcoming_vaccinations: number;
+  overdue_vaccinations: number;
+  pet_trends: PetWeightTrend[];
+  reminders: WellnessReminder[];
+}

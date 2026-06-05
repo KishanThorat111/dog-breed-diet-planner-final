@@ -12,6 +12,8 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.models.audit_log import AuditLog
+    from app.models.pet_vaccination import PetVaccination
+    from app.models.pet_weight_log import PetWeightLog
     from app.models.pet import Pet
     from app.models.subscription import Subscription
     from app.models.ai_usage import AIUsage
@@ -34,6 +36,12 @@ class User(Base, UUIDMixin, TimestampMixin):
         "Subscription", back_populates="user", lazy="select"
     )
     ai_usage: Mapped[list[AIUsage]] = relationship("AIUsage", back_populates="user", lazy="select")
+    weight_logs: Mapped[list[PetWeightLog]] = relationship(
+        "PetWeightLog", back_populates="user", lazy="select"
+    )
+    vaccinations: Mapped[list[PetVaccination]] = relationship(
+        "PetVaccination", back_populates="user", lazy="select"
+    )
     audit_logs: Mapped[list[AuditLog]] = relationship(
         "AuditLog", back_populates="user", lazy="select"
     )
