@@ -6,10 +6,12 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth import get_current_user
+from app.models.pet import Pet
 from app.models.user import User
 from app.services.diet_service import diet_service
 from app.services.pet_service import pet_service
@@ -40,6 +42,13 @@ async def _build_diet_plan_pdf_response(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diet plan not found")
 
     pet = await pet_service.get_by_id(db, plan.pet_id, current_user.id)
+    if not pet:
+        # Historical plans should remain downloadable even if pet was soft-deleted.
+        pet = (
+            await db.execute(
+                select(Pet).where(Pet.id == plan.pet_id, Pet.user_id == current_user.id)
+            )
+        ).scalar_one_or_none()
     if not pet:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found")
 

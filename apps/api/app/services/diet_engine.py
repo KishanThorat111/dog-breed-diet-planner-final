@@ -248,8 +248,29 @@ class DietEngine:
         allergies: list[str] | None = None,
         health_conditions: list[str] | None = None,
     ) -> DietPlanResult:
-        allergies = [a.lower() for a in (allergies or [])]
-        health_conditions = [h.lower() for h in (health_conditions or [])]
+        # Defensive normalization to handle legacy or malformed payload/data safely.
+        breed = str(breed or "mixed_breed").strip().lower().replace(" ", "_") or "mixed_breed"
+
+        try:
+            age_months = int(age_months)
+        except Exception:
+            age_months = 24
+        age_months = max(0, min(age_months, 360))
+
+        try:
+            weight_kg = float(weight_kg)
+        except Exception:
+            weight_kg = 10.0
+        if not math.isfinite(weight_kg) or weight_kg <= 0:
+            weight_kg = 10.0
+        weight_kg = max(0.1, min(weight_kg, 200.0))
+
+        activity_level = str(activity_level or "moderate").strip().lower()
+        if activity_level not in ACTIVITY_MULTIPLIERS:
+            activity_level = "moderate"
+
+        allergies = [str(a).strip().lower() for a in (allergies or []) if str(a).strip()]
+        health_conditions = [str(h).strip().lower() for h in (health_conditions or []) if str(h).strip()]
 
         # 1. Resting Energy Requirement (RER)
         rer = 70.0 * (weight_kg ** 0.75)

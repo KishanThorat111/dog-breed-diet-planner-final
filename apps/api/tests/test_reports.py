@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
+
+from app.models.pet import Pet
 
 
 async def _register_and_auth_headers(auth_client: AsyncClient) -> dict[str, str]:
@@ -234,6 +237,97 @@ async def test_report_download_handles_non_ascii_pet_names(auth_client: AsyncCli
     )
     assert plan_response.status_code == 201, plan_response.text
     plan_id = plan_response.json()["id"]
+
+    report_response = await auth_client.get(
+        f"/api/v1/reports/diet-plan/{plan_id}/pdf",
+        headers=headers,
+    )
+    assert report_response.status_code == 200, report_response.text
+    assert report_response.headers.get("content-type", "").startswith("application/pdf")
+
+
+@pytest.mark.asyncio
+async def test_diet_generation_handles_legacy_malformed_pet_data(auth_client: AsyncClient, db_session) -> None:
+    headers = await _register_and_auth_headers(auth_client)
+
+    # Register a user and create a malformed legacy pet row directly.
+    register = await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": f"legacy-{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123",
+            "full_name": "Legacy User",
+        },
+    )
+    assert register.status_code == 201, register.text
+    token = register.json()["access_token"]
+    user_id = uuid.UUID(register.json()["user_id"])
+    legacy_headers = {"Authorization": f"Bearer {token}"}
+
+    legacy_pet = Pet(
+        user_id=user_id,
+        name="Legacy Dog",
+        breed="Thai Ridgeback ###",
+        age_months=-5,
+        weight_kg=Decimal("-12.0"),
+        sex="unknown",
+        is_neutered=False,
+        life_stage="adult",
+        activity_level="extreme_hyper",
+        allergies=["Chicken", 42, None],
+        health_conditions="arthritis, obese",
+        notes=None,
+    )
+    db_session.add(legacy_pet)
+    await db_session.commit()
+    await db_session.refresh(legacy_pet)
+
+    response = await auth_client.post(
+        "/api/v1/diet-plans/generate",
+        headers=legacy_headers,
+        json={"pet_id": str(legacy_pet.id)},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["daily_calories"] > 0
+    assert body["activity_level"] in {"moderate", "active", "light", "sedentary", "very_active"}
+
+
+@pytest.mark.asyncio
+async def test_report_download_works_for_soft_deleted_pet(auth_client: AsyncClient) -> None:
+    headers = await _register_and_auth_headers(auth_client)
+
+    pet_response = await auth_client.post(
+        "/api/v1/pets",
+        headers=headers,
+        json={
+            "name": "Deleted Later",
+            "breed": "mixed_breed",
+            "age_months": 16,
+            "weight_kg": "13.0",
+            "activity_level": "moderate",
+            "sex": "male",
+        },
+    )
+    assert pet_response.status_code == 201, pet_response.text
+    pet_id = pet_response.json()["id"]
+
+    plan_response = await auth_client.post(
+        "/api/v1/diet-plans/generate",
+        headers=headers,
+        json={
+            "pet_id": pet_id,
+            "breed": "mixed_breed",
+            "age_months": 16,
+            "weight_kg": "13.0",
+            "activity_level": "moderate",
+        },
+    )
+    assert plan_response.status_code == 201, plan_response.text
+    plan_id = plan_response.json()["id"]
+
+    delete_response = await auth_client.delete(f"/api/v1/pets/{pet_id}", headers=headers)
+    assert delete_response.status_code == 204, delete_response.text
 
     report_response = await auth_client.get(
         f"/api/v1/reports/diet-plan/{plan_id}/pdf",

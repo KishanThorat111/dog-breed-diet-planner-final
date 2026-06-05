@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import math
+import re
 import uuid
 from decimal import Decimal
 
@@ -14,6 +16,55 @@ from app.services.diet_engine import diet_engine
 
 logger = logging.getLogger(__name__)
 
+_ALLOWED_ACTIVITY_LEVELS = {"sedentary", "light", "moderate", "active", "very_active"}
+
+
+def _normalize_breed(value: object | None) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return "mixed_breed"
+    text = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+    return text or "mixed_breed"
+
+
+def _normalize_age_months(value: object | None) -> int:
+    try:
+        age = int(value)  # type: ignore[arg-type]
+    except Exception:
+        return 24
+    return max(0, min(age, 360))
+
+
+def _normalize_weight_kg(value: object | None) -> float:
+    try:
+        weight = float(value)  # type: ignore[arg-type]
+    except Exception:
+        return 10.0
+    if not math.isfinite(weight) or weight <= 0:
+        return 10.0
+    return max(0.1, min(weight, 200.0))
+
+
+def _normalize_activity(value: object | None) -> str:
+    activity = str(value or "").strip().lower()
+    return activity if activity in _ALLOWED_ACTIVITY_LEVELS else "moderate"
+
+
+def _normalize_text_list(value: object | None) -> list[str]:
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, str):
+        items = [part.strip() for part in value.split(",")]
+    else:
+        return []
+
+    normalized: list[str] = []
+    for item in items:
+        text = str(item).strip().lower()
+        if text and text not in {"none", "null"}:
+            normalized.append(text)
+    return normalized
+
 
 class DietService:
     async def generate_for_pet(
@@ -24,22 +75,42 @@ class DietService:
         pet: Pet,
     ) -> DietPlan:
         # Use request overrides or fall back to pet profile values
-        breed = request.breed or pet.breed or "unknown"
-        age_months = request.age_months if request.age_months is not None else (pet.age_months or 24)
-        weight_kg = float(request.weight_kg or pet.weight_kg or 10)
-        activity_level = request.activity_level or pet.activity_level or "moderate"
+        breed = _normalize_breed(request.breed or pet.breed)
+        age_months = _normalize_age_months(request.age_months if request.age_months is not None else pet.age_months)
+        weight_kg = _normalize_weight_kg(request.weight_kg if request.weight_kg is not None else pet.weight_kg)
+        activity_level = _normalize_activity(request.activity_level or pet.activity_level)
+        allergies = _normalize_text_list(pet.allergies)
+        health_conditions = _normalize_text_list(pet.health_conditions)
 
         # Run deterministic diet calculation (always succeeds, no external deps)
-        result = diet_engine.generate(
-            breed=breed,
-            age_months=age_months,
-            weight_kg=weight_kg,
-            activity_level=activity_level,
-            is_neutered=pet.is_neutered,
-            sex=pet.sex or "male",
-            allergies=list(pet.allergies),
-            health_conditions=list(pet.health_conditions),
-        )
+        try:
+            result = diet_engine.generate(
+                breed=breed,
+                age_months=age_months,
+                weight_kg=weight_kg,
+                activity_level=activity_level,
+                is_neutered=pet.is_neutered,
+                sex=pet.sex or "male",
+                allergies=allergies,
+                health_conditions=health_conditions,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Diet engine failed for pet_id=%s user_id=%s. Falling back to safe defaults. err=%s",
+                pet.id,
+                user_id,
+                exc,
+            )
+            result = diet_engine.generate(
+                breed="mixed_breed",
+                age_months=24,
+                weight_kg=10.0,
+                activity_level="moderate",
+                is_neutered=True,
+                sex="male",
+                allergies=[],
+                health_conditions=[],
+            )
 
         # Optional AI enrichment — non-blocking, never raises
         ai_insights = None
@@ -58,7 +129,7 @@ class DietService:
                 fat_g=float(result.fat_g),
                 supplement_flags=result.supplement_flags,
                 foods_to_avoid=result.foods_to_avoid,
-                health_conditions=list(pet.health_conditions),
+                health_conditions=health_conditions,
                 user_id=user_id,
                 reference_type="prediction",
                 reference_id=request.prediction_id,
