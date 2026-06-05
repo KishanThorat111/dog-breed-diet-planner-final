@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import Field
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -36,6 +37,20 @@ def _breed_to_pet_name(breed: str | None) -> str:
         return "My Dog"
     name = breed.replace("_", " ").strip().title()
     return name or "My Dog"
+
+
+def _safe_pet_name(name: str | None, fallback_breed: str | None) -> str:
+    """Normalize user/AI-derived pet names to a DB-safe value."""
+    raw = (name or "").strip()
+    if not raw:
+        raw = _breed_to_pet_name(fallback_breed)
+
+    # Collapse excessive whitespace and enforce schema max length.
+    normalized = " ".join(raw.split())
+    if len(normalized) > 100:
+        normalized = normalized[:100].rstrip()
+
+    return normalized or "My Dog"
 
 
 class AnonDietPlanRequest(APIBaseModel):
@@ -102,20 +117,26 @@ async def generate_diet_plan(
             if not pet:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found")
         else:
-            auto_pet_name = (request.pet_name or "").strip() or _breed_to_pet_name(resolved_breed)
-            pet_payload = PetCreate(
-                name=auto_pet_name,
-                breed=resolved_breed,
-                age_months=resolved_age_months,
-                weight_kg=Decimal(str(resolved_weight)),
-                sex=request.sex,
-                is_neutered=request.is_neutered,
-                life_stage=_derive_life_stage(resolved_age_months),
-                activity_level=resolved_activity,
-                allergies=request.allergies,
-                health_conditions=request.health_conditions,
-                notes=None,
-            )
+            auto_pet_name = _safe_pet_name(request.pet_name, resolved_breed)
+            try:
+                pet_payload = PetCreate(
+                    name=auto_pet_name,
+                    breed=resolved_breed,
+                    age_months=resolved_age_months,
+                    weight_kg=Decimal(str(resolved_weight)),
+                    sex=request.sex,
+                    is_neutered=request.is_neutered,
+                    life_stage=_derive_life_stage(resolved_age_months),
+                    activity_level=resolved_activity,
+                    allergies=request.allergies,
+                    health_conditions=request.health_conditions,
+                    notes=None,
+                )
+            except ValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid diet generation inputs: {exc.errors()[0].get('msg', 'validation failed')}",
+                ) from exc
             pet = await pet_service.create(db, current_user.id, pet_payload)
 
         schema_req = SchemaReq(

@@ -165,3 +165,79 @@ async def test_generate_without_pet_id_persists_plan_creates_pet_and_downloads_p
     assert report_response.status_code == 200, report_response.text
     assert report_response.headers.get("content-type", "").startswith("application/pdf")
     assert report_response.content.startswith(b"%PDF")
+
+
+@pytest.mark.asyncio
+async def test_generate_with_long_pet_name_is_sanitized_and_report_downloads(auth_client: AsyncClient) -> None:
+    headers = await _register_and_auth_headers(auth_client)
+
+    very_long_name = "Thai Ridgeback " * 20
+    plan_response = await auth_client.post(
+        "/api/v1/diet-plans/generate",
+        headers=headers,
+        json={
+            "pet_name": very_long_name,
+            "breed": "thai_ridgeback",
+            "age_months": 24,
+            "weight_kg": "20.0",
+            "activity_level": "active",
+        },
+    )
+    assert plan_response.status_code == 201, plan_response.text
+    plan = plan_response.json()
+
+    pet_response = await auth_client.get(f"/api/v1/pets/{plan['pet_id']}", headers=headers)
+    assert pet_response.status_code == 200, pet_response.text
+    pet = pet_response.json()
+    assert len(pet["name"]) <= 100
+    assert pet["name"]
+
+    report_response = await auth_client.get(
+        f"/api/v1/reports/diet-plan/{plan['id']}/pdf",
+        headers=headers,
+    )
+    assert report_response.status_code == 200, report_response.text
+    disposition = report_response.headers.get("content-disposition", "")
+    assert "attachment" in disposition
+    assert "filename=" in disposition
+
+
+@pytest.mark.asyncio
+async def test_report_download_handles_non_ascii_pet_names(auth_client: AsyncClient) -> None:
+    headers = await _register_and_auth_headers(auth_client)
+
+    pet_response = await auth_client.post(
+        "/api/v1/pets",
+        headers=headers,
+        json={
+            "name": "Milo🐾",
+            "breed": "mixed_breed",
+            "age_months": 18,
+            "weight_kg": "12.0",
+            "activity_level": "moderate",
+            "sex": "male",
+        },
+    )
+    assert pet_response.status_code == 201, pet_response.text
+    pet_id = pet_response.json()["id"]
+
+    plan_response = await auth_client.post(
+        "/api/v1/diet-plans/generate",
+        headers=headers,
+        json={
+            "pet_id": pet_id,
+            "breed": "mixed_breed",
+            "age_months": 18,
+            "weight_kg": "12.0",
+            "activity_level": "moderate",
+        },
+    )
+    assert plan_response.status_code == 201, plan_response.text
+    plan_id = plan_response.json()["id"]
+
+    report_response = await auth_client.get(
+        f"/api/v1/reports/diet-plan/{plan_id}/pdf",
+        headers=headers,
+    )
+    assert report_response.status_code == 200, report_response.text
+    assert report_response.headers.get("content-type", "").startswith("application/pdf")
