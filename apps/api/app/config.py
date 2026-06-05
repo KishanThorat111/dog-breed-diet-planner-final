@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # File upload
     max_upload_size_mb: int = 10
 
+    # AI usage and subscription safeguards
+    guest_ai_daily_limit: int = 20
+    free_plan_initial_credits: int = 200
+    trial_duration_days: int = 14
+
     # ---------------------------------------------------------------------------
     # AI Providers — backend only, never exposed to frontend
     # ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ _bearer_optional = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 # Hardcoded anonymous user ID for the no-auth product testing flow.
 # A row with this ID is auto-created on app startup (see main.py lifespan).
@@ -36,20 +37,50 @@ def create_access_token(user_id: uuid.UUID, email: str) -> str:
         "sub": str(user_id),
         "email": email,
         "iat": now,
+        "typ": "access",
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
-def decode_access_token(token: str) -> dict:
-    """Decode and validate an access token. Raises HTTPException 401 on failure."""
+def create_refresh_token(user_id: uuid.UUID, email: str) -> str:
+    """Create a signed HS256 JWT refresh token."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "email": email,
+        "iat": now,
+        "typ": "refresh",
+        "exp": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def _decode_token(token: str) -> dict:
+    """Decode and validate a signed token payload."""
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        return payload
+        return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
     except jwt.InvalidTokenError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+
+
+def decode_access_token(token: str) -> dict:
+    """Decode and validate an access token. Raises HTTPException 401 on failure."""
+    payload = _decode_token(token)
+    token_type = payload.get("typ")
+    if token_type not in (None, "access"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token")
+    return payload
+
+
+def decode_refresh_token(token: str) -> dict:
+    """Decode and validate a refresh token. Raises HTTPException 401 on failure."""
+    payload = _decode_token(token)
+    if payload.get("typ") != "refresh":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+    return payload
 
 
 async def get_current_user(

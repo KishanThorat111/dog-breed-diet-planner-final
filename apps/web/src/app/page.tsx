@@ -15,13 +15,13 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              href="/analyze"
+              href="/login"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              Try it
+              Log in
             </Link>
             <Link
-              href="/analyze"
+              href="/login"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
             >
               Get started
@@ -50,10 +50,10 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              href="/analyze"
+              href="/login"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 hover:shadow-xl sm:w-auto"
             >
-              Try it now — no signup
+              Continue to secure dashboard
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -133,7 +133,7 @@ export default function HomePage() {
             Join thousands of pet owners using AI-powered nutrition planning. Free forever for 1 pet.
           </p>
           <Link
-            href="/sign-up"
+            href="/signup"
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90"
           >
             Get started free

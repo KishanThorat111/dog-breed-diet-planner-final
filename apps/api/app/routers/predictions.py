@@ -14,6 +14,7 @@ from app.middleware.rate_limiter import limiter
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.prediction import PredictionPublic, BreedPrediction
+from app.services.quota_service import quota_service
 
 router = APIRouter()
 
@@ -34,6 +35,10 @@ async def analyze_image(
     Auth is optional — anonymous users use the shared ANONYMOUS_USER_ID.
     """
     user_id = current_user.id if current_user else ANONYMOUS_USER_ID
+
+    # Quota enforcement before expensive AI execution.
+    await quota_service.assert_can_use_ai(db, user_id)
+
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,

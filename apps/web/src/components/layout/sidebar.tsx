@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { logoutUser, tokenStorage } from "@/lib/api-client";
 import {
   Activity,
@@ -19,6 +19,7 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
+  { href: "/profile", label: "Profile", icon: User },
   { href: "/pets", label: "My Pets", icon: Dog },
   { href: "/wellness", label: "Wellness", icon: Activity },
   { href: "/health-records", label: "Health Records", icon: ClipboardList },
@@ -30,12 +31,10 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const user = tokenStorage.getUser();
 
   const handleLogout = () => {
     logoutUser();
-    router.push("/sign-in");
   };
 
   return (

@@ -153,6 +153,21 @@ async def enrich_diet_plan(
     if not cfg.enabled:
         return None
 
+    # Enforce user-level quota before invoking external AI.
+    if user_id is not None:
+        try:
+            from app.database import AsyncSessionLocal
+            from app.services.quota_service import quota_service
+
+            async with AsyncSessionLocal() as session:
+                can_use = await quota_service.can_use_ai(session, user_id)
+            if not can_use:
+                logger.info("AI enrichment skipped: no quota available for user_id=%s", user_id)
+                return None
+        except Exception as exc:
+            logger.warning("Quota check failed for AI enrichment: %s", exc)
+            return None
+
     provider = get_provider()
     if not provider.is_configured:
         logger.debug("AI enrichment skipped — no provider configured")

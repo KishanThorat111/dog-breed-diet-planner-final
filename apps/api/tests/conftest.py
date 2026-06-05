@@ -120,6 +120,24 @@ async def admin_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, 
     app.dependency_overrides.clear()
 
 
+@pytest_asyncio.fixture
+async def auth_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """HTTP client with DB override only (real JWT auth dependencies enabled)."""
+
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
 @pytest.fixture
 def test_user_id() -> uuid.UUID:
     return _FIXED_USER_ID

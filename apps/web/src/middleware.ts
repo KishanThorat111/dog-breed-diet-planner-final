@@ -1,35 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Routes that we want to treat carefully on the server side
-const PROTECTED_PATHS = ["/dashboard", "/pets", "/analyze", "/diet-plans", "/reports", "/admin"];
+const PROTECTED_PATHS = [
+  "/dashboard",
+  "/profile",
+  "/pets",
+  "/analyze",
+  "/wellness",
+  "/health-records",
+  "/expenses",
+  "/diet-plans",
+  "/reports",
+  "/admin",
+];
+
+const AUTH_PATHS = ["/login", "/signup", "/sign-in", "/sign-up"];
+
+function isPathMatch(pathname: string, prefixes: string[]) {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const onProtectedRoute = isPathMatch(pathname, PROTECTED_PATHS);
+  const onAuthRoute = isPathMatch(pathname, AUTH_PATHS);
+
+  const rawUserCookie = request.cookies.get("dietpaw_user")?.value;
+  let parsedUser: { is_admin?: boolean } | null = null;
+  if (rawUserCookie) {
+    try {
+      parsedUser = JSON.parse(decodeURIComponent(rawUserCookie));
+    } catch {
+      parsedUser = null;
+    }
+  }
+
   // Add no-cache headers for protected routes so the browser always re-validates
-  const isProtected = PROTECTED_PATHS.some((p) => pathname.startsWith(p));
-  if (isProtected) {
-    // For admin routes we also perform a server-side check for an auth cookie.
-    if (pathname.startsWith("/admin")) {
-      try {
-        const raw = request.cookies.get("dietpaw_user")?.value;
-        if (!raw) {
-          // Not signed in, redirect to sign-in
-          return NextResponse.redirect(new URL("/sign-in", request.url));
-        }
-        const user = JSON.parse(decodeURIComponent(raw));
-        if (!user || user.is_admin !== true) {
-          // Signed in but not an admin
-          return NextResponse.redirect(new URL("/analyze", request.url));
-        }
-      } catch (e) {
-        return NextResponse.redirect(new URL("/sign-in", request.url));
-      }
+  if (onProtectedRoute) {
+    if (!parsedUser) {
+      const nextUrl = new URL("/login", request.url);
+      nextUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(nextUrl);
+    }
+
+    if (pathname.startsWith("/admin") && parsedUser.is_admin !== true) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
     }
 
     const response = NextResponse.next();
     response.headers.set("Cache-Control", "no-store");
     return response;
+  }
+
+  if (onAuthRoute && parsedUser) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();

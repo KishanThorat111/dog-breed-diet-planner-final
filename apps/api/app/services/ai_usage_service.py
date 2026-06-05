@@ -77,7 +77,13 @@ async def record_usage(
             if not sub:
                 return
 
-            if sub.trial_ends_at and sub.trial_ends_at > now:
+            trial_ends_at = sub.trial_ends_at
+            if trial_ends_at is not None and trial_ends_at.tzinfo is None:
+                trial_ends_at = trial_ends_at.replace(tzinfo=timezone.utc)
+            elif trial_ends_at is not None:
+                trial_ends_at = trial_ends_at.astimezone(timezone.utc)
+
+            if trial_ends_at and trial_ends_at > now:
                 return
 
             total_tokens = int(prompt_tokens or 0) + int(completion_tokens or 0)
@@ -97,7 +103,13 @@ async def record_usage(
                     return
 
                 # If trial active, do not deduct
-                if sub.trial_ends_at and sub.trial_ends_at > now:
+                trial_ends_at = sub.trial_ends_at
+                if trial_ends_at is not None and trial_ends_at.tzinfo is None:
+                    trial_ends_at = trial_ends_at.replace(tzinfo=timezone.utc)
+                elif trial_ends_at is not None:
+                    trial_ends_at = trial_ends_at.astimezone(timezone.utc)
+
+                if trial_ends_at and trial_ends_at > now:
                     return
 
                 # Deduct tokens (policy: 1 credit per 100 tokens, round up)

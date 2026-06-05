@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logoutUser } from "@/lib/api-client";
-import { Activity, Camera, ClipboardList, Dog, FileText, Home, Layers, LogOut, Wallet } from "lucide-react";
+import { Activity, Camera, ClipboardList, Dog, FileText, Home, Layers, LogOut, User, Wallet } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/profile", label: "Profile", icon: User },
   { href: "/pets", label: "Pets", icon: Dog },
   { href: "/wellness", label: "Wellness", icon: Activity },
   { href: "/health-records", label: "Health", icon: ClipboardList },
