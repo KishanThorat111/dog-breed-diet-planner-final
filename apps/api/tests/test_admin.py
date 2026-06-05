@@ -44,3 +44,32 @@ class TestAdminAI:
         assert response.status_code == 200
         body = response.json()
         assert "providers" in body
+
+    @pytest.mark.asyncio
+    async def test_admin_ai_health_endpoint(self, admin_client: AsyncClient) -> None:
+        response = await admin_client.get("/api/v1/admin/ai/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert "results" in body
+
+    @pytest.mark.asyncio
+    async def test_admin_can_set_supported_gemini_fallback_model(self, admin_client: AsyncClient) -> None:
+        response = await admin_client.put(
+            "/api/v1/admin/ai/config",
+            json={
+                "active_model": "gemini-2.5-flash",
+                "fallback_models": ["gemini-2.5-flash-lite"],
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["active_model"] == "gemini-2.5-flash"
+        assert "gemini-2.5-flash-lite" in body.get("fallback_models", [])
+
+    @pytest.mark.asyncio
+    async def test_admin_cannot_set_shutdown_gemini_models(self, admin_client: AsyncClient) -> None:
+        response = await admin_client.put(
+            "/api/v1/admin/ai/config",
+            json={"active_model": "gemini-2.0-flash"},
+        )
+        assert response.status_code == 422

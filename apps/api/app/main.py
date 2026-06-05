@@ -82,9 +82,18 @@ def _verify_gemini_config() -> None:
         return
 
     key_display = settings.gemini_api_key[:12] + "..." + settings.gemini_api_key[-4:]
+    from app.ai.config import get_ai_config
+
+    ai_cfg = get_ai_config()
+    primary_model = ai_cfg.active_model or "gemini-2.5-flash"
+    fallback_models = ai_cfg.fallback_models or ["gemini-2.5-flash-lite"]
+    fallback_label = ", ".join(fallback_models)
+
     logger.info(f"✓ Gemini API key configured: {key_display}")
     logger.info(
-        "  Vision models: gemini-2.5-flash (primary), gemini-2.0-flash (fallback)"
+        "  Vision models: %s (primary), %s (fallback)",
+        primary_model,
+        fallback_label,
     )
     logger.info(
         "  Free tier limits: 15 RPM, 1M tokens/day (upgrade at console.cloud.google.com)"

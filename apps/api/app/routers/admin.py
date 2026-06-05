@@ -77,6 +77,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
 class AIConfigUpdate(BaseModel):
     active_provider: str | None = None
     active_model: str | None = None
+    fallback_models: list[str] | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     timeout_seconds: int | None = None
@@ -95,6 +96,14 @@ def _provider_status_summary() -> list[dict]:
             "configured": provider.is_configured,
         })
     return rows
+
+
+_DEPRECATED_GEMINI_MODELS = {
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-001",
+    "gemini-2.0-flash-lite",
+    "gemini-2.0-flash-lite-001",
+}
 
 
 @router.get("/ai/config")
@@ -131,6 +140,36 @@ async def update_ai_config(body: AIConfigUpdate) -> dict:
                 detail=f"Unknown provider '{updates['active_provider']}'. "
                        f"Available: {available}",
             )
+
+    # Validate Gemini model deprecations and normalize fallback list.
+    active_model = updates.get("active_model")
+    if isinstance(active_model, str) and active_model in _DEPRECATED_GEMINI_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Model '{active_model}' is shut down. "
+                "Use 'gemini-2.5-flash' as primary and 'gemini-2.5-flash-lite' as fallback."
+            ),
+        )
+
+    if "fallback_models" in updates:
+        raw_fallbacks = updates.get("fallback_models") or []
+        normalized: list[str] = []
+        seen: set[str] = set()
+        primary = updates.get("active_model")
+        for model in raw_fallbacks:
+            if model in _DEPRECATED_GEMINI_MODELS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Fallback model '{model}' is shut down. "
+                        "Use 'gemini-2.5-flash-lite'."
+                    ),
+                )
+            if model and model != primary and model not in seen:
+                seen.add(model)
+                normalized.append(model)
+        updates["fallback_models"] = normalized
 
     updated = _update(**updates)
     return {

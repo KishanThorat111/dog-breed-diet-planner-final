@@ -1,7 +1,7 @@
 """
 AI Vision Breed Classification Service.
 
-Uses Gemini Vision (gemini-2.5-flash / gemini-2.0-flash) to identify dog breeds from images
+Uses Gemini Vision (gemini-2.5-flash / gemini-2.5-flash-lite) to identify dog breeds from images
 with high accuracy. The model is NOT restricted to a fixed list — it is
 free to name any breed it sees, and we map the result to our taxonomy
 with fuzzy matching.

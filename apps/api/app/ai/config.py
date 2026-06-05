@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -22,8 +22,11 @@ class AIConfig:
     # Which provider handles new requests
     active_provider: str = "gemini"
 
-    # Specific model; None = provider default (cheapest/fastest)
-    active_model: str | None = None
+    # Specific model. Defaults to the supported production primary.
+    active_model: str | None = "gemini-2.5-flash"
+
+    # Ordered fallback model chain for Gemini requests.
+    fallback_models: list[str] = field(default_factory=lambda: ["gemini-2.5-flash-lite"])
 
     # Generation parameters
     temperature: float = 0.3
@@ -38,6 +41,7 @@ class AIConfig:
         return {
             "active_provider": self.active_provider,
             "active_model": self.active_model,
+            "fallback_models": list(self.fallback_models),
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "timeout_seconds": self.timeout_seconds,
@@ -57,7 +61,16 @@ def _load_from_env() -> None:
     """Seed initial runtime config from environment variables."""
     with _lock:
         _config.active_provider = os.environ.get("AI_ACTIVE_PROVIDER", "gemini").lower()
-        _config.active_model = os.environ.get("AI_ACTIVE_MODEL") or None
+        _config.active_model = os.environ.get("AI_ACTIVE_MODEL") or "gemini-2.5-flash"
+        fallback_raw = os.environ.get("AI_FALLBACK_MODELS", "gemini-2.5-flash-lite")
+        seen: set[str] = set()
+        parsed_fallbacks: list[str] = []
+        for item in fallback_raw.split(","):
+            model = item.strip()
+            if model and model != _config.active_model and model not in seen:
+                seen.add(model)
+                parsed_fallbacks.append(model)
+        _config.fallback_models = parsed_fallbacks
         _config.enabled = os.environ.get("AI_ENABLED", "true").lower() not in ("false", "0", "no")
 
 

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------------
     # AI Providers — backend only, never exposed to frontend
     # ---------------------------------------------------------------------------
-    # Google Gemini (free tier: 15 RPM, 1M tokens/day on gemini-1.5-flash)
+    # Google Gemini (configured via AI Studio API key)
     gemini_api_key: str = ""
 
     # Active provider for this deployment profile (Gemini only)

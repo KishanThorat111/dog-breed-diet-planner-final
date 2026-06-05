@@ -14,7 +14,7 @@ interface ProviderStatus {
 interface AIConfig {
   active_provider: string;
   active_model: string | null;
-  fallback_providers: string[];
+  fallback_models: string[];
   temperature: number;
   max_tokens: number;
   timeout_seconds: number;
@@ -34,7 +34,7 @@ interface HealthResult {
 const PROVIDER_LABELS: Record<string, { label: string; defaultModel: string; color: string }> = {
   gemini: {
     label: "Google Gemini",
-    defaultModel: "gemini-1.5-flash",
+    defaultModel: "gemini-2.5-flash",
     color: "text-blue-600",
   },
   openai: {
@@ -50,7 +50,7 @@ const PROVIDER_LABELS: Record<string, { label: string; defaultModel: string; col
 };
 
 const MODEL_OPTIONS: Record<string, string[]> = {
-  gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
+  gemini: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
   openai: ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
   anthropic: [
     "claude-3-haiku-20240307",
@@ -273,39 +273,30 @@ export default function AdminAIPage() {
           </div>
         </div>
 
-        {/* Fallback providers */}
+        {/* Fallback models */}
         <div className="space-y-1">
-          <label className="text-sm font-medium">Fallback chain</label>
+          <label className="text-sm font-medium">Fallback model</label>
           <p className="text-xs text-muted-foreground">
-            Providers tried in order when the primary fails. Deselect to disable
-            fallback.
+            Model used if the primary model is unavailable.
           </p>
-          <div className="flex flex-wrap gap-2 mt-1">
-            {cfg.providers
-              .filter((p) => p.name !== cfg.active_provider)
-              .map((p) => {
-                const isFallback = cfg.fallback_providers.includes(p.name);
-                return (
-                  <button
-                    key={p.name}
-                    disabled={!p.configured}
-                    onClick={() => {
-                      const updated = isFallback
-                        ? cfg.fallback_providers.filter((x) => x !== p.name)
-                        : [...cfg.fallback_providers, p.name];
-                      updateMutation.mutate({ fallback_providers: updated });
-                    }}
-                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                      isFallback
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background text-foreground border-border"
-                    } disabled:opacity-40`}
-                  >
-                    {PROVIDER_LABELS[p.name]?.label ?? p.name}
-                  </button>
-                );
-              })}
-          </div>
+          <select
+            value={cfg.fallback_models?.[0] ?? ""}
+            onChange={(e) =>
+              updateMutation.mutate({
+                fallback_models: e.target.value ? [e.target.value] : [],
+              })
+            }
+            className="w-full border rounded px-3 py-2 text-sm bg-background"
+          >
+            <option value="">No fallback</option>
+            {(MODEL_OPTIONS[cfg.active_provider] ?? [])
+              .filter((m) => m !== (cfg.active_model ?? PROVIDER_LABELS[cfg.active_provider]?.defaultModel))
+              .map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+          </select>
         </div>
       </section>
 

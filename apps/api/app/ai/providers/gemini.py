@@ -2,7 +2,8 @@
 Google Gemini AI Provider.
 
 Uses google-generativeai SDK.
-Default model: gemini-1.5-flash (free tier: 15 RPM, 1M tokens/day).
+Primary model: gemini-2.5-flash.
+Fallback model: gemini-2.5-flash-lite.
 """
 from __future__ import annotations
 
@@ -14,8 +15,8 @@ from app.ai.base import AIRequest, AIResponse, BaseAIProvider
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "gemini-1.5-flash"
-_HEALTH_PROMPT = '{"ping": true}'
+_PRIMARY_MODEL = "gemini-2.5-flash"
+_FALLBACK_MODELS = ("gemini-2.5-flash-lite",)
 
 
 class GeminiProvider(BaseAIProvider):
@@ -55,53 +56,97 @@ class GeminiProvider(BaseAIProvider):
             self._genai = genai
         return self._genai
 
+    @staticmethod
+    def _candidate_models(
+        request: AIRequest,
+        configured_model: str | None,
+        fallback_models: list[str] | tuple[str, ...] | None,
+    ) -> list[str]:
+        """
+        Build model attempts in priority order without duplicates.
+
+        Order:
+        1) per-request override
+        2) runtime configured model
+        3) stable primary
+        4) stable fallbacks
+        """
+        requested = request.metadata.get("model")
+        models: list[str] = []
+        effective_fallbacks = tuple(fallback_models or _FALLBACK_MODELS)
+        for name in (requested, configured_model, _PRIMARY_MODEL, *effective_fallbacks):
+            if isinstance(name, str) and name and name not in models:
+                models.append(name)
+        return models
+
     async def complete(self, request: AIRequest) -> AIResponse:
         if not self.is_configured:
             raise RuntimeError("Gemini: GEMINI_API_KEY is not set")
 
         from app.ai.config import get_ai_config
         cfg = get_ai_config()
-        model_name = (
-            request.metadata.get("model")  # per-request override
-            or cfg.active_model            # admin runtime override
-            or _DEFAULT_MODEL
-        )
+        model_names = self._candidate_models(request, cfg.active_model, getattr(cfg, "fallback_models", None))
+        if not model_names:
+            raise RuntimeError("Gemini: no model configured")
 
         genai = self._get_sdk()
+        last_exc: Exception | None = None
 
-        with self._make_timer() as timer:
-            try:
-                gen_config = genai.types.GenerationConfig(
-                    temperature=request.temperature,
-                    max_output_tokens=request.max_tokens,
-                    response_mime_type="application/json" if request.json_mode else "text/plain",
-                )
-                model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=request.system_prompt,
-                    generation_config=gen_config,
-                )
+        for attempt, model_name in enumerate(model_names, start=1):
+            with self._make_timer() as timer:
+                try:
+                    gen_config = genai.types.GenerationConfig(
+                        temperature=request.temperature,
+                        max_output_tokens=request.max_tokens,
+                        response_mime_type="application/json" if request.json_mode else "text/plain",
+                    )
+                    model = genai.GenerativeModel(
+                        model_name=model_name,
+                        system_instruction=request.system_prompt,
+                        generation_config=gen_config,
+                    )
 
-                # google-generativeai SDK is synchronous — run in executor
-                loop = asyncio.get_event_loop()
-                response = await asyncio.wait_for(
-                    loop.run_in_executor(None, model.generate_content, request.prompt),
-                    timeout=request.timeout_seconds,
-                )
-            except asyncio.TimeoutError:
-                raise RuntimeError(
-                    f"Gemini timed out after {request.timeout_seconds}s"
-                )
+                    # google-generativeai SDK is synchronous — run in executor
+                    loop = asyncio.get_event_loop()
+                    response = await asyncio.wait_for(
+                        loop.run_in_executor(None, model.generate_content, request.prompt),
+                        timeout=request.timeout_seconds,
+                    )
+                except asyncio.TimeoutError as exc:
+                    last_exc = RuntimeError(
+                        f"Gemini timed out after {request.timeout_seconds}s (model={model_name})"
+                    )
+                    logger.warning(
+                        "Gemini model attempt %d/%d timed out: %s",
+                        attempt,
+                        len(model_names),
+                        model_name,
+                    )
+                    continue
+                except Exception as exc:
+                    last_exc = exc
+                    logger.warning(
+                        "Gemini model attempt %d/%d failed: %s (%s)",
+                        attempt,
+                        len(model_names),
+                        model_name,
+                        exc,
+                    )
+                    continue
 
-        usage = getattr(response, "usage_metadata", None)
-        return AIResponse(
-            content=response.text,
-            provider="gemini",
-            model=model_name,
-            prompt_tokens=getattr(usage, "prompt_token_count", 0) if usage else 0,
-            completion_tokens=getattr(usage, "candidates_token_count", 0) if usage else 0,
-            latency_ms=timer.elapsed_ms,
-        )
+            usage = getattr(response, "usage_metadata", None)
+            return AIResponse(
+                content=response.text,
+                provider="gemini",
+                model=model_name,
+                prompt_tokens=getattr(usage, "prompt_token_count", 0) if usage else 0,
+                completion_tokens=getattr(usage, "candidates_token_count", 0) if usage else 0,
+                latency_ms=timer.elapsed_ms,
+            )
+
+        raise RuntimeError(
+            f"Gemini failed for all configured models {model_names}. Last error: {last_exc}"
+        ) from last_exc
 
     async def health_check(self) -> tuple[bool, int]:
         if not self.is_configured:
@@ -114,7 +159,7 @@ class GeminiProvider(BaseAIProvider):
                     temperature=0,
                     timeout_seconds=8,
                     json_mode=True,
-                    metadata={"caller": "health_check"},
+                    metadata={"caller": "health_check", "model": _PRIMARY_MODEL},
                 )
             )
             return True, resp.latency_ms
