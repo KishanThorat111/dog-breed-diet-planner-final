@@ -153,6 +153,140 @@ Use ONLY your visual analysis. Do NOT guess based on context clues outside the d
 """
 
 
+def _safe_confidence(value: Any, default: float = 0.0) -> float:
+    """Parse confidence values from float/int/string/percent forms."""
+    try:
+        if isinstance(value, (int, float)):
+            parsed = float(value)
+        elif isinstance(value, str):
+            raw = value.strip()
+            is_percent = raw.endswith("%")
+            raw = raw.replace("%", "")
+            parsed = float(raw)
+            if is_percent:
+                parsed = parsed / 100.0
+        else:
+            return default
+
+        if parsed > 1.0:
+            parsed = parsed / 100.0
+        return max(0.0, min(parsed, 1.0))
+    except Exception:
+        return default
+
+
+def _extract_first_json_object(text: str) -> str | None:
+    """Return the first balanced JSON object found in text."""
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:idx + 1]
+    return None
+
+
+def _normalize_response_payload(raw: Any) -> dict[str, Any] | None:
+    """Normalize Gemini JSON payload variants into the canonical schema."""
+    if not isinstance(raw, dict):
+        return None
+
+    is_dog_raw = raw.get("is_dog", True)
+    if isinstance(is_dog_raw, str):
+        is_dog = is_dog_raw.strip().lower() not in {"false", "no", "0"}
+    else:
+        is_dog = bool(is_dog_raw)
+
+    top_breed_key = (
+        raw.get("top_breed_key")
+        or raw.get("top_breed")
+        or raw.get("breed_key")
+        or raw.get("breed")
+        or ""
+    )
+    top_display_name = (
+        raw.get("top_display_name")
+        or raw.get("top_breed_name")
+        or raw.get("display_name")
+        or ""
+    )
+    top_confidence = _safe_confidence(
+        raw.get("top_confidence")
+        if raw.get("top_confidence") is not None
+        else raw.get("confidence"),
+        default=0.0,
+    )
+
+    raw_predictions = raw.get("predictions")
+    if not isinstance(raw_predictions, list):
+        raw_predictions = raw.get("all_predictions") if isinstance(raw.get("all_predictions"), list) else []
+
+    predictions: list[dict[str, Any]] = []
+    for item in raw_predictions:
+        if not isinstance(item, dict):
+            continue
+        breed_key = item.get("breed_key") or item.get("breed") or ""
+        display_name = item.get("display_name") or item.get("breed_name") or ""
+        confidence = _safe_confidence(
+            item.get("confidence")
+            if item.get("confidence") is not None
+            else item.get("score"),
+            default=0.0,
+        )
+        if not breed_key and not display_name:
+            continue
+        if not breed_key and display_name:
+            breed_key = re.sub(r"[^a-z0-9]+", "_", str(display_name).lower()).strip("_")
+        if not display_name and breed_key:
+            display_name = str(breed_key).replace("_", " ").title()
+        predictions.append(
+            {
+                "breed_key": str(breed_key),
+                "display_name": str(display_name),
+                "confidence": confidence,
+            }
+        )
+
+    predictions.sort(key=lambda p: p["confidence"], reverse=True)
+
+    if not top_breed_key and predictions:
+        top_breed_key = predictions[0]["breed_key"]
+    if not top_display_name and predictions:
+        top_display_name = predictions[0]["display_name"]
+    if top_confidence <= 0 and predictions:
+        top_confidence = predictions[0]["confidence"]
+
+    if not top_breed_key:
+        return None
+
+    if not top_display_name:
+        top_display_name = str(top_breed_key).replace("_", " ").title()
+
+    if not predictions:
+        predictions = [
+            {
+                "breed_key": str(top_breed_key),
+                "display_name": str(top_display_name),
+                "confidence": max(top_confidence, 0.01),
+            }
+        ]
+
+    return {
+        "is_dog": is_dog,
+        "top_breed_key": str(top_breed_key),
+        "top_display_name": str(top_display_name),
+        "top_confidence": top_confidence,
+        "predictions": predictions,
+    }
+
+
 def _parse_response(text: str) -> dict[str, Any] | None:
     """
     Extract and parse the JSON from Gemini's response text.
@@ -163,43 +297,30 @@ def _parse_response(text: str) -> dict[str, Any] | None:
         logger.warning("Invalid response text: %s", type(text))
         return None
         
+    # First attempt: parse the full cleaned text.
+    cleaned = re.sub(r"```(?:json)?|```", "", text).strip()
     try:
-        # Try to clean markdown code blocks first
-        cleaned = re.sub(r"```(?:json)?|```", "", text).strip()
-        data = json.loads(cleaned)
-        
-        # Validate required fields
-        required_fields = ["is_dog", "top_breed_key", "top_display_name", "top_confidence"]
-        if not all(field in data for field in required_fields):
-            logger.warning(
-                "Parsed JSON missing required fields. Have: %s, Need: %s",
-                list(data.keys()), required_fields
-            )
-            return None
-        return data
-        
+        parsed = json.loads(cleaned)
+        normalized = _normalize_response_payload(parsed)
+        if normalized is not None:
+            return normalized
     except (json.JSONDecodeError, ValueError) as e:
         logger.debug("Failed to parse cleaned JSON: %s", e)
-        
-        # Try to extract JSON object from mixed text
-        match = re.search(r"\{[\s\S]*\}", text)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-                required_fields = ["is_dog", "top_breed_key", "top_display_name", "top_confidence"]
-                if all(field in data for field in required_fields):
-                    logger.debug("Successfully extracted JSON from mixed text")
-                    return data
-                else:
-                    logger.warning(
-                        "Extracted JSON missing fields. Have: %s, Need: %s",
-                        list(data.keys()), required_fields
-                    )
-            except (json.JSONDecodeError, ValueError) as e2:
-                logger.debug("Failed to parse extracted JSON: %s", e2)
-        
-        logger.error("Could not parse any valid JSON from response: %r", text[:300])
-        return None
+
+    # Second attempt: extract first balanced object from mixed text.
+    extracted = _extract_first_json_object(cleaned)
+    if extracted:
+        try:
+            parsed = json.loads(extracted)
+            normalized = _normalize_response_payload(parsed)
+            if normalized is not None:
+                logger.debug("Successfully extracted and normalized JSON from mixed text")
+                return normalized
+        except (json.JSONDecodeError, ValueError) as e2:
+            logger.debug("Failed to parse extracted JSON: %s", e2)
+
+    logger.error("Could not parse any valid JSON from response: %r", text[:300])
+    return None
 
 
 def _map_to_known_breed(breed_key: str, display_name: str = "") -> "BreedInfo | None":

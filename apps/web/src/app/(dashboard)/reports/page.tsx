@@ -7,18 +7,21 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { Download, FileText, Loader2 } from "lucide-react";
 
+const ANON_USER_ID = "00000000-0000-0000-0000-000000000001";
+
 export default function ReportsPage() {
   const { pets } = usePets();
   const { dietPlans } = useDietPlans();
   // Use authenticated API client — includes Clerk JWT in Authorization header
   const apiClient = useApiClient();
   const [downloading, setDownloading] = useState<string | null>(null);
+  const savedPlans = (dietPlans ?? []).filter((plan) => plan.user_id !== ANON_USER_ID);
 
-  const downloadReport = async (petId: string, planId: string) => {
-    const key = `${petId}-${planId}`;
+  const downloadReport = async (planId: string) => {
+    const key = planId;
     setDownloading(key);
     try {
-      const response = await apiClient.get(`/reports/${petId}/diet-plan/${planId}/pdf`, {
+      const response = await apiClient.get(`/reports/diet-plan/${planId}/pdf`, {
         responseType: "blob",
       });
       const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
@@ -30,8 +33,8 @@ export default function ReportsPage() {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
       toast.success("Report downloaded");
-    } catch {
-      toast.error("Failed to download report");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to download report");
     } finally {
       setDownloading(null);
     }
@@ -46,11 +49,11 @@ export default function ReportsPage() {
         </p>
       </div>
 
-      {dietPlans && dietPlans.length > 0 ? (
+      {savedPlans.length > 0 ? (
         <div className="space-y-3">
-          {dietPlans.map((plan) => {
+          {savedPlans.map((plan) => {
             const pet = pets?.find((p) => p.id === plan.pet_id);
-            const key = `${plan.pet_id}-${plan.id}`;
+            const key = plan.id;
             return (
               <div
                 key={plan.id}
@@ -62,7 +65,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="font-medium text-foreground">
-                      {pet?.name || "Unknown Pet"} — Diet Plan
+                      {pet?.name || "Pet"} — Diet Plan
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {new Date(plan.created_at).toLocaleDateString()} ·{" "}
@@ -71,7 +74,7 @@ export default function ReportsPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => downloadReport(plan.pet_id, plan.id)}
+                  onClick={() => downloadReport(plan.id)}
                   disabled={downloading === key}
                   className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -88,9 +91,9 @@ export default function ReportsPage() {
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 py-16 text-center">
-          <p className="text-muted-foreground">No reports available yet.</p>
+          <p className="text-muted-foreground">No saved reports available yet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Generate a diet plan first to download a PDF report.
+            Generate a diet plan for a selected pet to save and download a PDF report.
           </p>
         </div>
       )}

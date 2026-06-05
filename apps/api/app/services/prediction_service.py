@@ -61,60 +61,60 @@ class PredictionService:
         try:
             ai_vision = await classify_breed_with_gemini(image_bytes, content_type, user_id=user_id, reference_type="prediction")
         except GeminiVisionError as ge:
-            # Map Gemini errors to proper HTTP responses
-            error_msg = ge.message
-            
-            if ge.error_type == GeminiErrorType.INVALID_KEY:
-                logger.error("Gemini API key is invalid or not configured: %s", error_msg)
+            # Keep strict no-dog semantics. For all other Gemini failures,
+            # attempt local model fallback before returning an error.
+            if ge.error_type == GeminiErrorType.EMPTY_RESPONSE and ge.details.get("no_dog_detected"):
+                logger.info("No dog detected in image")
                 raise HTTPException(
-                    status_code=401,
-                    detail="AI service authentication failed. Please check server configuration.",
+                    status_code=422,
+                    detail="No dog detected in this image. Please upload a clear photo of a dog.",
                 )
-            elif ge.error_type == GeminiErrorType.PERMISSION_DENIED:
-                logger.error("Gemini API permission denied: %s", error_msg)
-                raise HTTPException(
-                    status_code=403,
-                    detail="AI service access denied. Please check server configuration.",
-                )
-            elif ge.error_type == GeminiErrorType.QUOTA_EXHAUSTED:
-                logger.warning("Gemini API quota exhausted: %s", error_msg)
-                raise HTTPException(
-                    status_code=429,
-                    detail="AI service rate limited. Please try again in a moment.",
-                )
-            elif ge.error_type == GeminiErrorType.TIMEOUT:
-                logger.warning("Gemini API call timed out: %s", error_msg)
-                raise HTTPException(
-                    status_code=504,
-                    detail="AI service request timed out. Try uploading a smaller image.",
-                )
-            elif ge.error_type == GeminiErrorType.EMPTY_RESPONSE:
-                # Check if it's "no dog detected"
-                if ge.details.get("no_dog_detected"):
-                    logger.info("No dog detected in image")
+
+            ai_vision = await self._run_local_fallback(loop, image_bytes, image_hash, ge)
+            if ai_vision is None:
+                error_msg = ge.message
+                if ge.error_type == GeminiErrorType.INVALID_KEY:
+                    logger.error("Gemini API key is invalid or not configured: %s", error_msg)
                     raise HTTPException(
-                        status_code=422,
-                        detail="No dog detected in this image. Please upload a clear photo of a dog.",
+                        status_code=401,
+                        detail="AI service authentication failed. Please check server configuration.",
                     )
-                # Otherwise fall through to generic 502
-                logger.warning("Gemini returned empty response: %s", error_msg)
-                raise HTTPException(
-                    status_code=502,
-                    detail="AI service returned invalid response. Please try again.",
-                )
-            elif ge.error_type == GeminiErrorType.INVALID_RESPONSE:
-                logger.error("Failed to parse Gemini response: %s", error_msg)
-                raise HTTPException(
-                    status_code=502,
-                    detail="AI service response could not be parsed. Please try again.",
-                )
-            else:
-                # All other errors (network, unknown, etc.)
-                logger.error("Gemini API error (%s): %s", ge.error_type, error_msg)
-                raise HTTPException(
-                    status_code=503,
-                    detail="AI service is temporarily unavailable. Please try again in a few moments.",
-                )
+                elif ge.error_type == GeminiErrorType.PERMISSION_DENIED:
+                    logger.error("Gemini API permission denied: %s", error_msg)
+                    raise HTTPException(
+                        status_code=403,
+                        detail="AI service access denied. Please check server configuration.",
+                    )
+                elif ge.error_type == GeminiErrorType.QUOTA_EXHAUSTED:
+                    logger.warning("Gemini API quota exhausted: %s", error_msg)
+                    raise HTTPException(
+                        status_code=429,
+                        detail="AI service rate limited. Please try again in a moment.",
+                    )
+                elif ge.error_type == GeminiErrorType.TIMEOUT:
+                    logger.warning("Gemini API call timed out: %s", error_msg)
+                    raise HTTPException(
+                        status_code=504,
+                        detail="AI service request timed out. Try uploading a smaller image.",
+                    )
+                elif ge.error_type == GeminiErrorType.EMPTY_RESPONSE:
+                    logger.warning("Gemini returned empty response: %s", error_msg)
+                    raise HTTPException(
+                        status_code=502,
+                        detail="AI service returned invalid response. Please try again.",
+                    )
+                elif ge.error_type == GeminiErrorType.INVALID_RESPONSE:
+                    logger.error("Failed to parse Gemini response: %s", error_msg)
+                    raise HTTPException(
+                        status_code=502,
+                        detail="AI service response could not be parsed. Please try again.",
+                    )
+                else:
+                    logger.error("Gemini API error (%s): %s", ge.error_type, error_msg)
+                    raise HTTPException(
+                        status_code=503,
+                        detail="AI service is temporarily unavailable. Please try again in a few moments.",
+                    )
 
         if ai_vision is None or not isinstance(ai_vision, dict):
             logger.error("Unexpected response from classify_breed_with_gemini: %s", ai_vision)
@@ -126,17 +126,18 @@ class PredictionService:
         # Build a normalized InferencePipelineResult from Gemini's response
         result = InferencePipelineResult(
             top_breed=ai_vision["top_breed"],
-            top_confidence=ai_vision["top_confidence"],
+            top_confidence=float(ai_vision["top_confidence"]),
             top_display_name=ai_vision["top_display_name"],
             all_predictions=ai_vision["all_predictions"],
-            model_version=f"{ai_vision.get('provider', 'gemini')}",
-            inference_time_ms=0,
+            model_version=str(ai_vision.get("model_version") or ai_vision.get("provider", "gemini-vision")),
+            inference_time_ms=int(ai_vision.get("inference_time_ms", 0) or 0),
             image_hash=image_hash,
         )
         logger.info(
-            "Gemini Vision classified breed=%s confidence=%.2f",
+            "Vision classified breed=%s confidence=%.2f provider=%s",
             result.top_breed,
             result.top_confidence,
+            ai_vision.get("provider", "unknown"),
         )
 
         # 5. Upload to R2 — non-fatal if R2 is not configured
@@ -194,6 +195,36 @@ class PredictionService:
             prediction.id, result.top_breed, result.top_confidence, result.inference_time_ms,
         )
         return prediction
+
+    async def _run_local_fallback(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        image_bytes: bytes,
+        image_hash: str,
+        gemini_error: Exception,
+    ) -> dict[str, Any] | None:
+        """Best-effort local model fallback when Gemini is unavailable or malformed."""
+        try:
+            from app.ml.pipeline import run_inference
+
+            local_result = await loop.run_in_executor(None, run_inference, image_bytes)
+            logger.warning(
+                "Gemini failed (%s). Using local model fallback for hash=%s",
+                gemini_error,
+                image_hash[:12],
+            )
+            return {
+                "top_breed": local_result.top_breed,
+                "top_display_name": local_result.top_display_name,
+                "top_confidence": local_result.top_confidence,
+                "all_predictions": local_result.all_predictions,
+                "provider": "local-model-fallback",
+                "model_version": local_result.model_version,
+                "inference_time_ms": local_result.inference_time_ms,
+            }
+        except Exception as fallback_error:
+            logger.error("Local fallback inference failed: %s", fallback_error)
+            return None
 
     async def _get_cached_result(self, image_hash: str) -> dict[str, Any] | None:
         """Return cached inference result dict or None (best-effort)."""

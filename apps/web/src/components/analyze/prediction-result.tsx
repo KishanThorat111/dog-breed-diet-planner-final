@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { capitalize } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface PredictionResultProps {
   prediction: Prediction;
@@ -24,9 +25,14 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
   const hasPets = pets && pets.length > 0;
 
   const handleGeneratePlan = () => {
+    if (hasPets && !selectedPetId) {
+      toast.error("Select a pet to save this diet plan and include it in reports.");
+      return;
+    }
+
     if (hasPets && selectedPetId) {
       generatePlan(
-        { pet_id: selectedPetId, prediction_id: prediction.id },
+        { pet_id: selectedPetId, prediction_id: prediction.id, breed: breedKey },
         { onSuccess: () => router.push("/diet-plans") }
       );
     } else {
@@ -110,7 +116,7 @@ export function PredictionResult({ prediction }: PredictionResultProps) {
               onChange={(e) => setSelectedPetId(e.target.value)}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <option value="">Quick generate (no pet) or select a pet…</option>
+              <option value="">Select a pet to save this plan…</option>
               {pets.map((pet) => (
                 <option key={pet.id} value={pet.id}>
                   {pet.name}

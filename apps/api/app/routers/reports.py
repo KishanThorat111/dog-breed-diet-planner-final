@@ -16,15 +16,18 @@ from app.services.report_service import generate_diet_report_pdf
 router = APIRouter()
 
 
-@router.get("/diet-plan/{plan_id}/pdf")
-async def download_diet_plan_pdf(
+async def _build_diet_plan_pdf_response(
     plan_id: uuid.UUID,
+    expected_pet_id: uuid.UUID | None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Response:
     """Generate and download a PDF diet plan report."""
     plan = await diet_service.get_by_id(db, plan_id, current_user.id)
     if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diet plan not found")
+
+    if expected_pet_id is not None and plan.pet_id != expected_pet_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diet plan not found")
 
     pet = await pet_service.get_by_id(db, plan.pet_id, current_user.id)
@@ -41,3 +44,23 @@ async def download_diet_plan_pdf(
             "Content-Length": str(len(pdf_bytes)),
         },
     )
+
+
+@router.get("/diet-plan/{plan_id}/pdf")
+async def download_diet_plan_pdf(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    return await _build_diet_plan_pdf_response(plan_id, None, db, current_user)
+
+
+@router.get("/{pet_id}/diet-plan/{plan_id}/pdf")
+async def download_diet_plan_pdf_legacy(
+    pet_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Backward-compatible route used by older frontend builds."""
+    return await _build_diet_plan_pdf_response(plan_id, pet_id, db, current_user)

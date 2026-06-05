@@ -58,6 +58,13 @@ def generate_diet_report_pdf(pet: Pet, plan: DietPlan) -> bytes:
         spaceBefore=14,
         spaceAfter=4,
     )
+    subtitle_style = ParagraphStyle(
+        "Subtitle",
+        parent=styles["Normal"],
+        textColor=colors.HexColor("#4B5563"),
+        fontSize=11,
+        spaceAfter=8,
+    )
     body_style = styles["BodyText"]
     body_style.fontSize = 10
 
@@ -65,7 +72,7 @@ def generate_diet_report_pdf(pet: Pet, plan: DietPlan) -> bytes:
 
     # ─── Header ───
     story.append(Paragraph("🐾 Dog Breed Diet Planner", title_style))
-    story.append(Paragraph("Personalized Nutrition Report", styles["Subtitle"]))
+    story.append(Paragraph("Personalized Nutrition Report", subtitle_style))
     story.append(HRFlowable(width="100%", thickness=2, color=BRAND_COLOR))
     story.append(Spacer(1, 0.4 * cm))
 
