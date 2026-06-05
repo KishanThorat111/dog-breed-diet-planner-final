@@ -2,8 +2,9 @@
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
-  limit: number;
-  offset: number;
+  page: number;
+  page_size: number;
+  pages: number;
 }
 
 export interface ApiError {
@@ -84,34 +85,47 @@ export interface Prediction {
 // --- Diet Plan ---
 export interface FoodItem {
   name: string;
-  serving_size: string;
-  frequency: string;
+  serving_size?: string;
+  amount_g?: number;
+  frequency?: string;
+  category?: string;
   notes?: string;
 }
 
 export interface FeedingScheduleItem {
-  meal: string;
-  time: string;
-  calories: number;
-  portion: string;
+  meal?: string;
+  meal_name?: string;
+  time?: string;
+  time_suggestion?: string;
+  calories?: number;
+  amount_kcal?: number;
+  portion?: string;
+  amount_g?: number;
 }
 
 export interface DietPlan {
   id: string;
   pet_id: string;
+  user_id: string;
   prediction_id: string | null;
+  breed: string;
+  age_months: number;
+  weight_kg: number;
+  activity_level: string;
   daily_calories: number;
   protein_g: number;
   fat_g: number;
   carbs_g: number;
-  fiber_g: number | null;
-  water_ml: number | null;
+  meals_per_day: number;
   food_recommendations: FoodItem[];
   foods_to_avoid: string[];
   supplement_flags: string[];
   feeding_schedule: FeedingScheduleItem[];
-  special_notes: string[];
+  notes?: string | null;
+  special_notes?: string[];
   engine_version: string;
+  ai_insights?: Record<string, unknown> | null;
+  ai_provider_used?: string | null;
   created_at: string;
   updated_at: string;
 }

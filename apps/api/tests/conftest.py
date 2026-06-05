@@ -28,8 +28,10 @@ def _compile_jsonb_for_sqlite(_type, _compiler, **_kw):
     return "JSON"
 
 
-# Prefer explicit test DB URL, then CI DATABASE_URL, then local in-memory SQLite.
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL") or "sqlite+aiosqlite:///:memory:"
+# Prefer explicit test DB URL, then CI DATABASE_URL, then local file-backed SQLite.
+# File-backed SQLite avoids in-memory connection visibility and greenlet issues
+# when tests create multiple AsyncSession instances.
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL") or "sqlite+aiosqlite:///./test_db.sqlite"
 
 # Opt-in integration tests against real PG (set TEST_DATABASE_URL if needed)
 _INTEGRATION_DB_URL = os.getenv("TEST_DATABASE_URL", "")
@@ -51,8 +53,10 @@ async def db_engine():
 
 @pytest_asyncio.fixture
 async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
-    # Ensure session state expires on commit so concurrent commits are visible
-    session_factory = async_sessionmaker(db_engine, expire_on_commit=True)
+    # For tests prefer `expire_on_commit=False` so attributes remain available
+    # after commit and we avoid triggering lazy loads that can lead to
+    # greenlet/aiosqlite errors in the test runtime.
+    session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
     async with session_factory() as session:
         yield session
         await session.rollback()

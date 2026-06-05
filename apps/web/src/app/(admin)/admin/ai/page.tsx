@@ -82,12 +82,12 @@ export default function AdminAIPage() {
 
   const configQuery = useQuery<AIConfig>({
     queryKey: ["admin", "ai", "config"],
-    queryFn: () => api.get<AIConfig>("/api/v1/admin/ai/config").then((r) => r.data),
+    queryFn: () => api.get<AIConfig>("/admin/ai/config").then((r) => r.data),
   });
 
   const healthQuery = useQuery<{ results: HealthResult[] }>({
     queryKey: ["admin", "ai", "health"],
-    queryFn: () => api.get<{ results: HealthResult[] }>("/api/v1/admin/ai/health").then((r) => r.data),
+    queryFn: () => api.get<{ results: HealthResult[] }>("/admin/ai/health").then((r) => r.data),
     staleTime: 30_000,
   });
 
@@ -95,7 +95,7 @@ export default function AdminAIPage() {
 
   const updateMutation = useMutation({
     mutationFn: (updates: Partial<AIConfig>) =>
-      api.put<AIConfig>("/api/v1/admin/ai/config", updates).then((r) => r.data),
+      api.put<AIConfig>("/admin/ai/config", updates).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "ai", "config"] });
       toast.success("AI configuration updated");
@@ -105,7 +105,7 @@ export default function AdminAIPage() {
 
   const testMutation = useMutation<TestResult, Error, { provider: string; prompt: string }>({
     mutationFn: (body) =>
-      api.post<TestResult>("/api/v1/admin/ai/test", body).then((r) => r.data),
+      api.post<TestResult>("/admin/ai/test", body).then((r) => r.data),
     onSuccess: (data) => {
       setTestResult(
         `✓ ${data.provider} / ${data.model} — ${data.latency_ms}ms\n` +

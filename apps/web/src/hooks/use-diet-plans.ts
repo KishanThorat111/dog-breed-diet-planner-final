@@ -33,17 +33,24 @@ export function useGenerateDietPlan() {
       const ANON_ID = "00000000-0000-0000-0000-000000000001";
       // If the plan is anonymous (quick-generate), inject it into the local cache
       if (plan.user_id === ANON_ID) {
-        queryClient.setQueryData(["diet-plans"], (old: PaginatedResponse<DietPlan> | undefined) => {
+        const injectIntoCache = (old: PaginatedResponse<DietPlan> | undefined): PaginatedResponse<DietPlan> => {
           const prevItems = old?.items ?? [];
-          const newItems = [plan, ...prevItems];
+          const pageSize = old?.page_size ?? 10;
+          const total = (old?.total ?? 0) + 1;
+          const newItems = [plan, ...prevItems].slice(0, pageSize);
+
           return {
             items: newItems,
-            total: (old?.total ?? 0) + 1,
+            total,
             page: old?.page ?? 1,
-            page_size: old?.page_size ?? 10,
-            pages: Math.ceil(((old?.total ?? 0) + 1) / (old?.page_size ?? 10)),
-          } as PaginatedResponse<DietPlan>;
-        });
+            page_size: pageSize,
+            pages: Math.max(old?.pages ?? 1, Math.ceil(total / pageSize)),
+          };
+        };
+
+        // Keep both legacy and current key shapes in sync.
+        queryClient.setQueryData(["diet-plans", undefined], injectIntoCache);
+        queryClient.setQueryData(["diet-plans"], injectIntoCache);
       } else {
         queryClient.invalidateQueries({ queryKey: ["diet-plans"] });
       }

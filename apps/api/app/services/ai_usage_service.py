@@ -67,21 +67,19 @@ async def record_usage(
         from app.models.subscription import Subscription
 
         now = datetime.now(timezone.utc)
-        # Use a fresh session for subscription lookup/deduction to avoid
-        # holding locks in caller sessions. If a caller passed a session we
-        # create a new one so the deduction is always visible to other
-        # sessions; this mirrors previous behaviour while keeping tests
-        # deterministic when they call `record_usage(..., session=db_session)`.
-        async with AsyncSessionLocal() as sub_sess:
-            sub = (await sub_sess.execute(select(Subscription).where(Subscription.user_id == user_id))).scalar_one_or_none()
+        # If the caller provided a session, reuse it for subscription lookup
+        # and deduction to avoid creating a new connection which can cause
+        # greenlet/aiosqlite issues in tests (especially with in-memory sqlite).
+        # Otherwise, use a fresh session for deduction so production behavior
+        # remains the same.
+        if session is not None:
+            sub = (await session.execute(select(Subscription).where(Subscription.user_id == user_id))).scalar_one_or_none()
             if not sub:
                 return
 
-            # If trial active, do not deduct
             if sub.trial_ends_at and sub.trial_ends_at > now:
                 return
 
-            # Deduct tokens (policy: 1 credit per 100 tokens, round up)
             total_tokens = int(prompt_tokens or 0) + int(completion_tokens or 0)
             if total_tokens <= 0:
                 return
@@ -89,9 +87,30 @@ async def record_usage(
             credits_to_deduct = (total_tokens + 99) // 100
             sub.credits_remaining = max(0, (sub.credits_remaining or 0) - credits_to_deduct)
             try:
-                await sub_sess.commit()
+                await session.commit()
             except Exception:
-                await sub_sess.rollback()
+                await session.rollback()
+        else:
+            async with AsyncSessionLocal() as sub_sess:
+                sub = (await sub_sess.execute(select(Subscription).where(Subscription.user_id == user_id))).scalar_one_or_none()
+                if not sub:
+                    return
+
+                # If trial active, do not deduct
+                if sub.trial_ends_at and sub.trial_ends_at > now:
+                    return
+
+                # Deduct tokens (policy: 1 credit per 100 tokens, round up)
+                total_tokens = int(prompt_tokens or 0) + int(completion_tokens or 0)
+                if total_tokens <= 0:
+                    return
+
+                credits_to_deduct = (total_tokens + 99) // 100
+                sub.credits_remaining = max(0, (sub.credits_remaining or 0) - credits_to_deduct)
+                try:
+                    await sub_sess.commit()
+                except Exception:
+                    await sub_sess.rollback()
     except Exception:
         # Non-fatal: usage recording should not break caller
         return

@@ -10,6 +10,8 @@ interface DietPlanCardProps {
 }
 
 export function DietPlanCard({ plan }: DietPlanCardProps) {
+  const displayNotes = plan.special_notes?.length ? plan.special_notes : plan.notes ? [plan.notes] : [];
+
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
       {/* Header */}
@@ -56,7 +58,8 @@ export function DietPlanCard({ plan }: DietPlanCardProps) {
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
                   <span>
                     <span className="text-foreground font-medium">{food.name}</span>
-                    {food.serving_size && ` — ${food.serving_size}`}
+                    {(food.serving_size || food.amount_g) &&
+                      ` — ${food.serving_size ?? `${food.amount_g} g`}`}
                   </span>
                 </li>
               ))}
@@ -99,13 +102,13 @@ export function DietPlanCard({ plan }: DietPlanCardProps) {
         )}
 
         {/* Special notes */}
-        {plan.special_notes.length > 0 && (
+        {displayNotes.length > 0 && (
           <div className="rounded-xl border border-border bg-muted/20 p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Info className="h-4 w-4 text-muted-foreground" />
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</p>
             </div>
-            {plan.special_notes.map((note, i) => (
+            {displayNotes.map((note, i) => (
               <p key={i} className="text-xs text-muted-foreground">{note}</p>
             ))}
           </div>

@@ -1,38 +1,40 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "@/lib/api-client";
+import { useApiClient } from "@/lib/api-client";
 import { BarChart3, Dog, Sparkles, FileText, Users } from "lucide-react";
 import { StatsCard } from "@/components/admin/stats-card";
 
 interface AdminStats {
-  total_users: number;
-  total_pets: number;
-  total_predictions: number;
-  total_diet_plans: number;
+  users: number;
+  pets: number;
+  predictions: number;
+  diet_plans: number;
 }
 
 export default function AdminPage() {
+  const api = useApiClient();
+
   const { data: stats, isLoading } = useQuery<AdminStats>({
     queryKey: ["admin-stats"],
     queryFn: async () => {
-      const res = await apiClient.get("/admin/stats");
+      const res = await api.get("/admin/stats");
       return res.data;
     },
   });
 
   const cards = [
-    { label: "Total Users", value: stats?.total_users, icon: Users, color: "text-primary" },
-    { label: "Total Pets", value: stats?.total_pets, icon: Dog, color: "text-emerald-500" },
+    { label: "Total Users", value: stats?.users, icon: Users, color: "text-primary" },
+    { label: "Total Pets", value: stats?.pets, icon: Dog, color: "text-emerald-500" },
     {
       label: "AI Analyses",
-      value: stats?.total_predictions,
+      value: stats?.predictions,
       icon: Sparkles,
       color: "text-amber-500",
     },
     {
       label: "Diet Plans",
-      value: stats?.total_diet_plans,
+      value: stats?.diet_plans,
       icon: FileText,
       color: "text-rose-500",
     },

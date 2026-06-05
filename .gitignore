@@ -66,6 +66,8 @@ docker-compose.override.yml
 htmlcov/
 coverage.xml
 *.cover
+apps/api/test_db.sqlite
+apps/api/*.sqlite
 
 # Logs
 *.log
