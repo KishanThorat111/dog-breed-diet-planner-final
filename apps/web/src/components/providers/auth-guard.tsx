@@ -16,11 +16,32 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       router.push("/sign-in");
       return;
     }
-    // only allow users with is_admin flag for admin routes
+    setAllowed(true);
+    setReady(true);
+  }, [router]);
+
+  if (!ready) return <div>Checking authentication...</div>;
+  if (!allowed) return <div>Access denied.</div>;
+  return <>{children}</>;
+}
+
+export function AdminGuard({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    const user = tokenStorage.getUser();
+    if (!user) {
+      router.push("/sign-in");
+      return;
+    }
+
     if ((user as any).is_admin) {
       setAllowed(true);
     } else {
       setAllowed(false);
+      router.push("/analyze");
     }
     setReady(true);
   }, [router]);

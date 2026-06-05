@@ -11,12 +11,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from app.models.ai_usage import AIUsage
     from app.models.audit_log import AuditLog
+    from app.models.pet import Pet
+    from app.models.pet_expense import PetExpense
+    from app.models.pet_health_record import PetHealthRecord
+    from app.models.pet_medication_schedule import PetMedicationSchedule
     from app.models.pet_vaccination import PetVaccination
     from app.models.pet_weight_log import PetWeightLog
-    from app.models.pet import Pet
     from app.models.subscription import Subscription
-    from app.models.ai_usage import AIUsage
 
 
 class User(Base, UUIDMixin, TimestampMixin):
@@ -41,6 +44,15 @@ class User(Base, UUIDMixin, TimestampMixin):
     )
     vaccinations: Mapped[list[PetVaccination]] = relationship(
         "PetVaccination", back_populates="user", lazy="select"
+    )
+    health_records: Mapped[list[PetHealthRecord]] = relationship(
+        "PetHealthRecord", back_populates="user", lazy="select"
+    )
+    medication_schedules: Mapped[list[PetMedicationSchedule]] = relationship(
+        "PetMedicationSchedule", back_populates="user", lazy="select"
+    )
+    expenses: Mapped[list[PetExpense]] = relationship(
+        "PetExpense", back_populates="user", lazy="select"
     )
     audit_logs: Mapped[list[AuditLog]] = relationship(
         "AuditLog", back_populates="user", lazy="select"

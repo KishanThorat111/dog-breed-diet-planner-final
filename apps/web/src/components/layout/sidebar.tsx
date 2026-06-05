@@ -3,12 +3,26 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logoutUser, tokenStorage } from "@/lib/api-client";
-import { Activity, BarChart3, Camera, Dog, FileText, Home, Layers, LogOut, User } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Camera,
+  ClipboardList,
+  Dog,
+  FileText,
+  Home,
+  Layers,
+  LogOut,
+  User,
+  Wallet,
+} from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/pets", label: "My Pets", icon: Dog },
   { href: "/wellness", label: "Wellness", icon: Activity },
+  { href: "/health-records", label: "Health Records", icon: ClipboardList },
+  { href: "/expenses", label: "Expenses", icon: Wallet },
   { href: "/analyze", label: "Analyze", icon: Camera },
   { href: "/diet-plans", label: "Diet Plans", icon: Layers },
   { href: "/reports", label: "Reports", icon: FileText },

@@ -219,3 +219,154 @@ export interface WellnessSummary {
   pet_trends: PetWeightTrend[];
   reminders: WellnessReminder[];
 }
+
+// --- Health Records + Expenses ---
+export type HealthRecordType =
+  | "diagnosis"
+  | "vet_note"
+  | "visit"
+  | "lab_result"
+  | "symptom"
+  | "other";
+
+export type ExpenseCategory =
+  | "food"
+  | "medicine"
+  | "vaccine"
+  | "vet_visit"
+  | "accessory"
+  | "other";
+
+export interface HealthRecord {
+  id: string;
+  pet_id: string;
+  user_id: string;
+  record_type: HealthRecordType;
+  title: string;
+  details: string;
+  recorded_on: string;
+  veterinarian: string | null;
+  clinic_name: string | null;
+  next_visit_on: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthRecordCreate {
+  record_type: HealthRecordType;
+  title: string;
+  details: string;
+  recorded_on: string;
+  veterinarian?: string;
+  clinic_name?: string;
+  next_visit_on?: string;
+}
+
+export interface HealthRecordUpdate {
+  record_type?: HealthRecordType;
+  title?: string;
+  details?: string;
+  recorded_on?: string;
+  veterinarian?: string;
+  clinic_name?: string;
+  next_visit_on?: string;
+}
+
+export interface MedicationSchedule {
+  id: string;
+  pet_id: string;
+  user_id: string;
+  medication_name: string;
+  dosage: string;
+  frequency: string;
+  starts_on: string;
+  ends_on: string | null;
+  next_due_on: string | null;
+  reminder_days_before: number;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MedicationCreate {
+  medication_name: string;
+  dosage: string;
+  frequency: string;
+  starts_on: string;
+  ends_on?: string;
+  next_due_on?: string;
+  reminder_days_before?: number;
+  is_active?: boolean;
+  notes?: string;
+}
+
+export interface MedicationUpdate {
+  medication_name?: string;
+  dosage?: string;
+  frequency?: string;
+  starts_on?: string;
+  ends_on?: string;
+  next_due_on?: string;
+  reminder_days_before?: number;
+  is_active?: boolean;
+  notes?: string;
+}
+
+export interface ExpenseEntry {
+  id: string;
+  pet_id: string;
+  user_id: string;
+  category: ExpenseCategory;
+  amount: number;
+  expense_on: string;
+  description: string;
+  vendor: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExpenseCreate {
+  category: ExpenseCategory;
+  amount: number;
+  expense_on: string;
+  description: string;
+  vendor?: string;
+  notes?: string;
+}
+
+export interface ExpenseUpdate {
+  category?: ExpenseCategory;
+  amount?: number;
+  expense_on?: string;
+  description?: string;
+  vendor?: string;
+  notes?: string;
+}
+
+export interface HealthReminder {
+  item_id: string;
+  pet_id: string;
+  pet_name: string;
+  reminder_type: "medication" | "vet_visit" | "vaccination";
+  title: string;
+  due_on: string;
+  days_until_due: number;
+  status: "overdue" | "due_soon";
+}
+
+export interface ExpenseCategorySummary {
+  category: ExpenseCategory;
+  total_amount: number;
+}
+
+export interface HealthSummary {
+  total_records: number;
+  active_medications: number;
+  due_medications_7d: number;
+  upcoming_visits_30d: number;
+  monthly_expense_total: number;
+  expense_by_category: ExpenseCategorySummary[];
+  reminders: HealthReminder[];
+}

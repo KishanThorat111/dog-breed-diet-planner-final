@@ -1,5 +1,15 @@
 import Link from "next/link";
-import { Activity, ArrowRight, Camera, Dog, FileText, Plus, Sparkles } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Camera,
+  ClipboardList,
+  Dog,
+  FileText,
+  Plus,
+  Sparkles,
+  Wallet,
+} from "lucide-react";
 
 export const metadata = { title: "Dashboard" };
 
@@ -83,6 +93,38 @@ export default function DashboardPage() {
               <h3 className="font-semibold text-foreground">Wellness Center</h3>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 Track weight logs and vaccination reminders for each pet
+              </p>
+            </div>
+            <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" />
+          </Link>
+
+          <Link
+            href="/health-records"
+            className="group flex items-start gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:border-primary/40 hover:shadow-md"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 transition-colors group-hover:bg-violet-500 group-hover:text-white dark:text-violet-400">
+              <ClipboardList className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Health Records</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Save diagnoses, vet notes, and medication schedules by pet
+              </p>
+            </div>
+            <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" />
+          </Link>
+
+          <Link
+            href="/expenses"
+            className="group flex items-start gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:border-primary/40 hover:shadow-md"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-fuchsia-500/10 text-fuchsia-600 transition-colors group-hover:bg-fuchsia-500 group-hover:text-white dark:text-fuchsia-400">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Track Expenses</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Monitor spending on food, meds, vaccinations, and vet visits
               </p>
             </div>
             <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" />

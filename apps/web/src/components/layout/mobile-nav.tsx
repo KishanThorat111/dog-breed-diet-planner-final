@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logoutUser } from "@/lib/api-client";
-import { Activity, Camera, Dog, FileText, Home, Layers, LogOut } from "lucide-react";
+import { Activity, Camera, ClipboardList, Dog, FileText, Home, Layers, LogOut, Wallet } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/pets", label: "Pets", icon: Dog },
   { href: "/wellness", label: "Wellness", icon: Activity },
+  { href: "/health-records", label: "Health", icon: ClipboardList },
+  { href: "/expenses", label: "Expenses", icon: Wallet },
   { href: "/analyze", label: "Analyze", icon: Camera },
   { href: "/diet-plans", label: "Diet", icon: Layers },
   { href: "/reports", label: "Reports", icon: FileText },
@@ -38,14 +40,14 @@ export function MobileNav() {
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 lg:hidden">
-        <div className="flex">
+        <div className="flex overflow-x-auto">
           {navItems.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
+                className={`flex min-w-[72px] flex-1 flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
                   active ? "text-primary" : "text-muted-foreground"
                 }`}
               >

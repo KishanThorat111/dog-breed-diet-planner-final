@@ -69,6 +69,130 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/analytics")
+async def get_analytics(db: AsyncSession = Depends(get_db)) -> dict:
+    """Extended analytics for admin dashboards."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import func, select
+
+    from app.models.ai_usage import AIUsage
+    from app.models.pet import Pet
+    from app.models.pet_expense import PetExpense
+    from app.models.pet_health_record import PetHealthRecord
+    from app.models.pet_medication_schedule import PetMedicationSchedule
+    from app.models.pet_vaccination import PetVaccination
+    from app.models.pet_weight_log import PetWeightLog
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    month_start = today.replace(day=1)
+    growth_start = now - timedelta(days=190)
+
+    def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
+        idx = (year * 12 + (month - 1)) + delta
+        return idx // 12, idx % 12 + 1
+
+    labels: list[str] = []
+    for offset in range(-5, 1):
+        y, m = _shift_month(now.year, now.month, offset)
+        labels.append(f"{y:04d}-{m:02d}")
+
+    users_rows = (
+        await db.execute(
+            select(User.created_at)
+            .where(User.deleted_at.is_(None), User.created_at >= growth_start)
+            .order_by(User.created_at.asc())
+        )
+    ).scalars().all()
+    users_growth = {label: 0 for label in labels}
+    for created_at in users_rows:
+        key = f"{created_at.year:04d}-{created_at.month:02d}"
+        if key in users_growth:
+            users_growth[key] += 1
+
+    pets_rows = (
+        await db.execute(
+            select(Pet.created_at)
+            .where(Pet.deleted_at.is_(None), Pet.created_at >= growth_start)
+            .order_by(Pet.created_at.asc())
+        )
+    ).scalars().all()
+    pets_growth = {label: 0 for label in labels}
+    for created_at in pets_rows:
+        key = f"{created_at.year:04d}-{created_at.month:02d}"
+        if key in pets_growth:
+            pets_growth[key] += 1
+
+    upcoming_vaccinations = (
+        await db.execute(
+            select(func.count())
+            .select_from(PetVaccination)
+            .where(
+                PetVaccination.is_completed.is_(False),
+                PetVaccination.due_on >= today,
+                PetVaccination.due_on <= today + timedelta(days=30),
+            )
+        )
+    ).scalar_one()
+
+    overdue_vaccinations = (
+        await db.execute(
+            select(func.count())
+            .select_from(PetVaccination)
+            .where(PetVaccination.is_completed.is_(False), PetVaccination.due_on < today)
+        )
+    ).scalar_one()
+
+    active_medications = (
+        await db.execute(
+            select(func.count())
+            .select_from(PetMedicationSchedule)
+            .where(PetMedicationSchedule.is_active.is_(True))
+        )
+    ).scalar_one()
+
+    health_records = (
+        await db.execute(select(func.count()).select_from(PetHealthRecord))
+    ).scalar_one()
+
+    weight_logs = (
+        await db.execute(select(func.count()).select_from(PetWeightLog))
+    ).scalar_one()
+
+    expense_total_raw = (
+        await db.execute(
+            select(func.coalesce(func.sum(PetExpense.amount), 0)).where(PetExpense.expense_on >= month_start)
+        )
+    ).scalar_one()
+
+    usage_7d = (
+        await db.execute(
+            select(
+                func.count().label("events"),
+                func.coalesce(func.sum(AIUsage.prompt_tokens + AIUsage.completion_tokens), 0).label("tokens"),
+            ).where(AIUsage.created_at >= now - timedelta(days=7))
+        )
+    ).one()
+
+    return {
+        "user_growth": [{"month": label, "count": users_growth[label]} for label in labels],
+        "pet_growth": [{"month": label, "count": pets_growth[label]} for label in labels],
+        "wellness": {
+            "upcoming_vaccinations": upcoming_vaccinations,
+            "overdue_vaccinations": overdue_vaccinations,
+            "active_medications": active_medications,
+            "health_records": health_records,
+            "weight_logs": weight_logs,
+            "monthly_expense_total": float(expense_total_raw or 0),
+        },
+        "ai_usage_7d": {
+            "events": usage_7d.events,
+            "tokens": int(usage_7d.tokens or 0),
+        },
+    }
+
+
 # ============================================================================
 # AI Provider Management
 # API keys are NEVER returned — admin sees only provider names + status.

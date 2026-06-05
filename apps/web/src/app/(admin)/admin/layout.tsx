@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { AuthGuard } from "@/components/providers/auth-guard";
+import { AdminGuard } from "@/components/providers/auth-guard";
 import { BarChart3, Bot, Settings, Users } from "lucide-react";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AuthGuard>
+    <AdminGuard>
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Admin Sidebar */}
         <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card lg:flex">
@@ -15,8 +15,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <nav className="flex-1 space-y-1 p-3">
             {[
               { href: "/admin", label: "Overview", icon: BarChart3 },
+              { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
               { href: "/admin/users", label: "Users", icon: Users },
               { href: "/admin/ai", label: "AI Settings", icon: Bot },
+              { href: "/admin/ai-usage", label: "AI Usage", icon: Bot },
+              { href: "/admin/credits", label: "Credits", icon: Settings },
             ].map((item) => (
               <Link
                 key={item.href}
@@ -31,6 +34,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </aside>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
-    </AuthGuard>
+    </AdminGuard>
   );
 }

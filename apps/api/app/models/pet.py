@@ -13,6 +13,9 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.models.diet_plan import DietPlan
+    from app.models.pet_expense import PetExpense
+    from app.models.pet_health_record import PetHealthRecord
+    from app.models.pet_medication_schedule import PetMedicationSchedule
     from app.models.pet_vaccination import PetVaccination
     from app.models.pet_weight_log import PetWeightLog
     from app.models.prediction import AIPrediction
@@ -66,4 +69,13 @@ class Pet(Base, UUIDMixin, TimestampMixin):
     )
     vaccinations: Mapped[list[PetVaccination]] = relationship(
         "PetVaccination", back_populates="pet", lazy="select"
+    )
+    health_records: Mapped[list[PetHealthRecord]] = relationship(
+        "PetHealthRecord", back_populates="pet", lazy="select"
+    )
+    medication_schedules: Mapped[list[PetMedicationSchedule]] = relationship(
+        "PetMedicationSchedule", back_populates="pet", lazy="select"
+    )
+    expenses: Mapped[list[PetExpense]] = relationship(
+        "PetExpense", back_populates="pet", lazy="select"
     )
